@@ -295,11 +295,8 @@ export function buildCatalog(s: CatalogStrings): Catalog {
         uploads: yn(server.allowMobileUploads),
       }),
     ],
-    serverChoices: (servers) => {
-      const lines = [s.tpl.serverChoicesHeader, ""];
-      for (const server of servers) lines.push(serverLine(server));
-      return lines.join("\n");
-    },
+    serverLines: (servers) => servers.map(serverLine),
+    serverChoices: (servers) => [s.tpl.serverChoicesHeader, "", ...servers.map(serverLine)].join("\n"),
     libraryChoicesTitle: s.titles.libraryChoices,
     libraryChoicesHint: tpl(s.tpl.libraryChoicesHint, { done: s.buttons.librariesDone }),
     libraryChoicesSelected: (ids) => tpl(s.tpl.libraryChoicesSelected, { ids: join(ids.map((id) => `#${id}`)) }),

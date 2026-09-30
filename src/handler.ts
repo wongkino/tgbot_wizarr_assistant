@@ -8,6 +8,7 @@ import {
   formatPermissions,
   formatQuickSettings,
   formatServerChoices,
+  formatServerLines,
   formatServers,
   formatStatus,
   formatUserList,
@@ -404,7 +405,12 @@ async function beginQuickInvite(ctx: Req, chatId: number): Promise<Screen> {
   }
   const only = servers.length === 1 ? servers[0] : undefined;
   if (only) return createQuickInvite(ctx, chatId, only);
-  await send(ctx, chatId, ctx.cat.msg.chooseEmbyQuick, serverChoiceKeyboard(ctx.cat, servers));
+  await send(
+    ctx,
+    chatId,
+    `${ctx.cat.msg.chooseEmbyQuick}\n\n${formatServerLines(ctx.cat, servers)}`,
+    serverChoiceKeyboard(ctx.cat, servers),
+  );
   return { type: "quick_invite_server" };
 }
 
@@ -662,7 +668,12 @@ async function beginSettingsLibraries(ctx: Req, chatId: number): Promise<Screen>
   if (servers.length === 1) {
     return renderSettingsLibraryPick(ctx, chatId, servers[0].id, await selectedLibraryIds(ctx, servers[0].id), 0);
   }
-  await send(ctx, chatId, ctx.cat.msg.chooseEmbySettings, serverChoiceKeyboard(ctx.cat, servers));
+  await send(
+    ctx,
+    chatId,
+    `${ctx.cat.msg.chooseEmbySettings}\n\n${formatServerLines(ctx.cat, servers)}`,
+    serverChoiceKeyboard(ctx.cat, servers),
+  );
   return { type: "settings_library_server" };
 }
 
@@ -749,19 +760,25 @@ async function beginCreateInvite(ctx: Req, chatId: number): Promise<Screen> {
     await send(ctx, chatId, ctx.cat.msg.noServers, invitesKeyboard(ctx.cat));
     return { type: "invites" };
   }
+  const only = servers.length === 1 ? servers[0] : undefined;
+  if (only) return beginInviteExpiry(ctx, chatId, only);
   await send(ctx, chatId, formatServerChoices(ctx.cat, servers), serverChoiceKeyboard(ctx.cat, servers));
   return { type: "invite_server" };
+}
+
+async function beginInviteExpiry(ctx: Req, chatId: number, server: ServerInfo): Promise<Screen> {
+  const draft = emptyDraft();
+  draft.serverId = server.id;
+  draft.serverName = server.name;
+  await send(ctx, chatId, ctx.cat.msg.inviteServerExpiryPrompt(server.name), expiryKeyboard(ctx.cat));
+  return { type: "invite_expiry", draft };
 }
 
 async function handleInviteServer(text: string, ctx: Req, chatId: number): Promise<Screen> {
   const servers = await verifiedServers(ctx);
   const server = await chosenServer(text, ctx, chatId, servers, ctx.cat.msg.pickVerified);
   if (!server) return { type: "invite_server" };
-  const draft = emptyDraft();
-  draft.serverId = server.id;
-  draft.serverName = server.name;
-  await send(ctx, chatId, ctx.cat.msg.inviteServerExpiryPrompt(server.name), expiryKeyboard(ctx.cat));
-  return { type: "invite_expiry", draft };
+  return beginInviteExpiry(ctx, chatId, server);
 }
 
 async function handleInviteExpiry(draft: InviteDraft, text: string, ctx: Req, chatId: number): Promise<Screen> {
@@ -1077,7 +1094,12 @@ async function chosenServer(
   const serverId = parseServerButton(ctx.cat, text);
   const server = serverId == null ? undefined : servers.find((item) => item.id === serverId);
   if (server) return server;
-  await send(ctx, chatId, miss, serverChoiceKeyboard(ctx.cat, servers));
+  await send(
+    ctx,
+    chatId,
+    `${miss}\n\n${formatServerLines(ctx.cat, servers)}`,
+    serverChoiceKeyboard(ctx.cat, servers),
+  );
   return undefined;
 }
 

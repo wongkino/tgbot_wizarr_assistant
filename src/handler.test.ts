@@ -673,7 +673,8 @@ describe("回覆鍵盤", () => {
     const wizarr = fakeWizarr();
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.createInvite, ctx);
-    await run(serverButton(cat, 1), ctx);
+    // 只有一台已驗證伺服器，直接跳到有效期選擇
+    assert.match(ctx.telegram.last().text, /邀請連結多久後失效/);
     await run(B.expiry7, ctx);
     await run(B.durUnlimited, ctx);
     await run(B.pickLibraries, ctx);
@@ -699,6 +700,68 @@ describe("回覆鍵盤", () => {
     assert.match(ctx.telegram.last().text, /https:\/\/wizarr\.example\/j\/NEW1/);
     assert.equal(ctx.telegram.photos.length, 1);
     assert.match(ctx.telegram.photos[0]?.caption ?? "", /NEW1/);
+  });
+
+  it("多台伺服器時逐步建立會列出對照再選擇", async () => {
+    const wizarr = fakeWizarr({
+      async listServers() {
+        return [server(1, "Plex", "plex"), server(2, "Emby 二號", "emby")];
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.createInvite, ctx);
+    const text = ctx.telegram.last().text;
+    assert.match(text, /選擇要邀請的伺服器/);
+    assert.match(text, /#1<\/b> Plex（plex）/);
+    assert.match(text, /#2<\/b> Emby 二號（emby）/);
+    await run(serverButton(cat, 2), ctx);
+    assert.match(ctx.telegram.last().text, /伺服器：<b>Emby 二號<\/b>/);
+    await run(B.expiry7, ctx);
+    await run(B.durUnlimited, ctx);
+    await run(B.allLibraries, ctx);
+    await run(B.nextStep, ctx);
+    await run(B.confirm, ctx);
+    assert.deepEqual(wizarr.created[0]?.serverIds, [2]);
+  });
+
+  it("多台 Emby 時快速邀請會列出名稱對照", async () => {
+    const wizarr = fakeWizarr({
+      async listServers() {
+        return [server(1, "Emby 一號", "emby"), server(2, "Emby 二號", "emby")];
+      },
+      async listLibraries() {
+        return quickLibraryFixtures().map((item) => ({ ...item, serverId: 2, serverName: "Emby 二號" }));
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.quickInvite, ctx);
+    const text = ctx.telegram.last().text;
+    assert.match(text, /選擇 Emby 伺服器/);
+    assert.match(text, /#1<\/b> Emby 一號/);
+    assert.match(text, /#2<\/b> Emby 二號/);
+    await run(serverButton(cat, 2), ctx);
+    assert.match(ctx.telegram.last().text, /邀請已建立/);
+    assert.deepEqual(wizarr.created[0]?.serverIds, [2]);
+  });
+
+  it("多台 Emby 時設定預設媒體庫會列出名稱對照", async () => {
+    const wizarr = fakeWizarr({
+      async listServers() {
+        return [server(1, "Emby 一號", "emby"), server(2, "Emby 二號", "emby")];
+      },
+      async listLibraries() {
+        return quickLibraryFixtures();
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.settings, ctx);
+    await run(B.setLibraries, ctx);
+    const text = ctx.telegram.last().text;
+    assert.match(text, /選擇要設定預設媒體庫的 Emby 伺服器/);
+    assert.match(text, /#1<\/b> Emby 一號/);
+    assert.match(text, /#2<\/b> Emby 二號/);
+    await run(serverButton(cat, 1), ctx);
+    assert.match(ctx.telegram.last().text, /選擇媒體庫/);
   });
 
   it("列出邀請時會送出每一組網址的 QR code", async () => {

@@ -117,6 +117,8 @@ export interface Catalog {
   serversUnit: string;
   serversEmpty: string;
   serverItem(server: ServerInfo): string[];
+  /** 伺服器選擇列表的逐台行（不含標題）。 */
+  serverLines(servers: ServerInfo[]): string[];
   serverChoices(servers: ServerInfo[]): string;
   libraryChoicesTitle: string;
   libraryChoicesHint: string;

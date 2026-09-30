@@ -104,6 +104,11 @@ export function formatServerChoices(cat: Catalog, servers: ServerInfo[]): string
   return cat.serverChoices(servers);
 }
 
+/** 伺服器選擇的逐台對照行（#ID + 名稱），供附在提示訊息後面。 */
+export function formatServerLines(cat: Catalog, servers: ServerInfo[]): string {
+  return cat.serverLines(servers).join("\n");
+}
+
 export function formatLibraryChoices(cat: Catalog, view: PageView<LibraryInfo>, selected: number[]): string {
   const lines = [
     `<b>${cat.libraryChoicesTitle}</b>`,
