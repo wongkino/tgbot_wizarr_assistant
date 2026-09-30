@@ -216,7 +216,6 @@ export const catalog: Catalog = buildCatalog({
     chooseDays: "延長する日数を選択してください。",
     newExpiryLine: "新しい期限：{date}",
     noServersQuick: "認証済みサーバーがないため、クイック招待を作成できません。",
-    chooseServersQuick: "サーバーを選択（複数選択可）。選ぶとすぐに招待を作成します。",
     pickVerified: "認証済みサーバーのいずれかをタップしてください。",
     quickMissingLibraries:
       "サーバーに既定ライブラリがそろっていないため、クイック招待を作成できません。\n不足：{missing}。\n{settingsButton}で既定ライブラリを調整できます。",

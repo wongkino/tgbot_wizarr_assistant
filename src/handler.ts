@@ -233,8 +233,6 @@ async function dispatch(
       return handleExtendDays(screen, text, ctx, chatId);
     case "invite_server":
       return pickVerifiedServers(screen, text, ctx, chatId, (chosen) => beginInviteExpiry(ctx, chatId, chosen));
-    case "quick_invite_server":
-      return pickVerifiedServers(screen, text, ctx, chatId, (chosen) => createQuickInvite(ctx, chatId, chosen));
     case "invite_expiry":
       return handleInviteExpiry(screen.draft, text, ctx, chatId);
     case "invite_duration":
@@ -406,23 +404,23 @@ async function showInviteList(
 
 async function beginQuickInvite(ctx: Req, chatId: number): Promise<Screen> {
   const servers = await verifiedServers(ctx);
-  return chooseServers(ctx, chatId, "quick_invite_server", servers, {
-    empty: { message: ctx.cat.msg.noServersQuick, keyboard: invitesKeyboard(ctx.cat), screen: { type: "invites" } },
-    single: (servers) => createQuickInvite(ctx, chatId, servers),
-  });
+  if (!servers.length) {
+    await send(ctx, chatId, ctx.cat.msg.noServersQuick, invitesKeyboard(ctx.cat));
+    return { type: "invites" };
+  }
+  return createQuickInvite(ctx, chatId, servers);
 }
 
 async function createQuickInvite(ctx: Req, chatId: number, servers: ServerInfo[]): Promise<Screen> {
-  const serverIds = sortedServerIds(servers);
   const settings = await loadQuickSettings(ctx.sessions);
-  const enabled = await enabledLibraries(ctx, serverIds);
-  let libraryIds: number[];
-  let libraries: string;
-  if (settings.libraries === null) {
-    libraryIds = [];
-    libraries = ctx.cat.librariesLine([ctx.cat.allEnabledLibraries]);
-  } else {
-    const { selected, missing } = matchLibraries(enabled, settings.libraries);
+  const enabled = await enabledLibraries(ctx, sortedServerIds(servers));
+  // 預設媒體庫未設定（或為空）時，涵蓋所有已驗證伺服器的全部已啟用媒體庫。
+  const preset = settings.libraries?.length ? settings.libraries : null;
+  let serverIds = sortedServerIds(servers);
+  let libraryIds: number[] = [];
+  let libraries = ctx.cat.librariesLine([ctx.cat.allEnabledLibraries]);
+  if (preset) {
+    const { selected, missing } = matchLibraries(enabled, preset);
     if (missing.length) {
       await send(
         ctx,
@@ -433,6 +431,10 @@ async function createQuickInvite(ctx: Req, chatId: number, servers: ServerInfo[]
       return { type: "invites" };
     }
     libraryIds = selected.map((library) => library.id);
+    // 預設媒體庫所在的伺服器就是邀請要涵蓋的伺服器，不用再問。
+    serverIds = [...new Set(selected.map((library) => library.serverId).filter((id): id is number => id !== null))].sort(
+      (a, b) => a - b,
+    );
     libraries = ctx.cat.librariesLine(selected.map((library) => library.name));
   }
   const invites = await ctx.wizarr.listInvitations();
@@ -1131,7 +1133,7 @@ function toInvitationInput(draft: InviteDraft): CreateInvitationInput | null {
 }
 
 /** 三種多選伺服器畫面的 screen 型別名稱。 */
-type ServerPickScreen = "invite_server" | "quick_invite_server" | "settings_library_server";
+type ServerPickScreen = "invite_server" | "settings_library_server";
 
 /** 三種流程共用的入口：0 台顯示空狀態、1 台直接進入 single、多台進入多選畫面。 */
 async function chooseServers(
@@ -1162,7 +1164,6 @@ async function renderServerPick(
   notice?: string,
 ): Promise<Screen> {
   const prompts: Record<ServerPickScreen, string> = {
-    quick_invite_server: ctx.cat.msg.chooseServersQuick,
     settings_library_server: ctx.cat.msg.chooseLibraryServersSettings,
     invite_server: "",
   };

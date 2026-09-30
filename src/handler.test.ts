@@ -568,7 +568,7 @@ describe("回覆鍵盤", () => {
     assert.match(ctx.telegram.last().text, /CODE1/);
   });
 
-  it("快速邀請列出 Plex 在內的所有已驗證伺服器", async () => {
+  it("快速邀請不再詢問伺服器，直接使用所有已驗證伺服器", async () => {
     const wizarr = fakeWizarr({
       async listServers() {
         return [server(1, "Emby", "emby"), server(2, "Plex", "plex")];
@@ -579,12 +579,6 @@ describe("回覆鍵盤", () => {
     });
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.quickInvite, ctx);
-    const text = ctx.telegram.last().text;
-    assert.match(text, /#1<\/b> Emby/);
-    assert.match(text, /#2<\/b> Plex/);
-    await run(serverButton(cat, 1), ctx);
-    await run(serverButton(cat, 2), ctx);
-    await run(B.serversDone, ctx);
     assert.match(ctx.telegram.last().text, /邀請已建立/);
     assert.deepEqual(wizarr.created[0]?.serverIds, [1, 2]);
   });
@@ -794,7 +788,7 @@ describe("回覆鍵盤", () => {
     assert.deepEqual(wizarr.created[0]?.serverIds, [1, 2]);
   });
 
-  it("多台伺服器時快速邀請會列出名稱對照", async () => {
+  it("設定預設媒體庫時，快速邀請只涵蓋這些媒體庫所在的伺服器", async () => {
     const wizarr = fakeWizarr({
       async listServers() {
         return twoEmbyServers();
@@ -804,30 +798,17 @@ describe("回覆鍵盤", () => {
       },
     });
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
-    await run(B.quickInvite, ctx);
-    const text = ctx.telegram.last().text;
-    assert.match(text, /選擇伺服器/);
-    assert.match(text, /#1<\/b> Emby 一號/);
-    assert.match(text, /#2<\/b> Emby 二號/);
-    await run(serverButton(cat, 2), ctx);
-    await run(B.serversDone, ctx);
-    assert.match(ctx.telegram.last().text, /邀請已建立/);
-    assert.deepEqual(wizarr.created[0]?.serverIds, [2]);
-  });
-
-  it("快速邀請可複選多台伺服器", async () => {
-    const wizarr = fakeWizarr({
-      async listServers() {
-        return twoEmbyServers();
-      },
+    await saveQuickSettings(ctx.sessions, {
+      ...defaultQuickSettings(),
+      libraries: [
+        { name: "Movies", externalId: "mov" },
+        { name: "Anime", externalId: "ani" },
+      ],
     });
-    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.quickInvite, ctx);
-    await run(serverButton(cat, 1), ctx);
-    await run(serverButton(cat, 2), ctx);
-    await run(B.serversDone, ctx);
     assert.match(ctx.telegram.last().text, /邀請已建立/);
-    assert.deepEqual(wizarr.created[0]?.serverIds, [1, 2]);
+    assert.deepEqual(ctx.wizarr.created[0]?.serverIds, [2]);
+    assert.deepEqual(ctx.wizarr.created[0]?.libraryIds, [3, 12]);
   });
 
   it("多台伺服器時設定預設媒體庫會列出名稱對照", async () => {
@@ -878,9 +859,6 @@ describe("回覆鍵盤", () => {
     await run(B.librariesDone, ctx);
     assert.match(ctx.telegram.last().text, /媒體庫：Movies、Anime/);
     await run(B.quickInvite, ctx);
-    await run(serverButton(cat, 1), ctx);
-    await run(serverButton(cat, 2), ctx);
-    await run(B.serversDone, ctx);
     assert.deepEqual(wizarr.created[0]?.serverIds, [1, 2]);
     assert.deepEqual(wizarr.created[0]?.libraryIds, [3, 12]);
   });

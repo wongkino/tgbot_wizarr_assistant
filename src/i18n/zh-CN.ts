@@ -208,7 +208,6 @@ export const catalog: Catalog = buildCatalog({
     chooseDays: "请选择延长天数。",
     newExpiryLine: "新到期日：{date}",
     noServersQuick: "没有已验证的服务器，无法创建快速邀请。",
-    chooseServersQuick: "选择服务器（可多选），选完会立即创建邀请。",
     pickVerified: "请点选其中一台已验证的服务器。",
     quickMissingLibraries:
       "服务器缺少部分默认媒体库，无法创建快速邀请。\n缺少：{missing}。\n可到{settingsButton}调整默认媒体库。",

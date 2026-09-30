@@ -145,7 +145,6 @@ export interface CatalogStrings {
     /** {date} */
     newExpiryLine: string;
     noServersQuick: string;
-    chooseServersQuick: string;
     pickVerified: string;
     /** {missing} {settingsButton} */
     quickMissingLibraries: string;
@@ -379,7 +378,6 @@ export function buildCatalog(s: CatalogStrings): Catalog {
       chooseDays: s.msg.chooseDays,
       newExpiryLine: (formatted) => tpl(s.msg.newExpiryLine, { date: formatted }),
       noServersQuick: s.msg.noServersQuick,
-      chooseServersQuick: s.msg.chooseServersQuick,
       pickVerified: s.msg.pickVerified,
       quickMissingLibraries: (missing, settingsButton) =>
         tpl(s.msg.quickMissingLibraries, { missing: join(missing.map(esc)), settingsButton }),

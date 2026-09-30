@@ -161,7 +161,6 @@ export interface Catalog {
     chooseDays: string;
     newExpiryLine(formatted: string): string;
     noServersQuick: string;
-    chooseServersQuick: string;
     pickVerified: string;
     quickMissingLibraries(missing: string[], settingsButton: string): string;
     quickReuseTitle: string;

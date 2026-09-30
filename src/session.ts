@@ -9,7 +9,6 @@ export const SCREEN_PARENT = {
   invites: "invites",
   invite_list: "invites",
   invite_server: "invites",
-  quick_invite_server: "invites",
   invite_expiry: "invites",
   invite_duration: "invites",
   invite_library_mode: "invites",
@@ -50,7 +49,6 @@ export function isScreen(value: unknown): value is Screen {
     case "settings_lang":
       return true;
     case "invite_server":
-    case "quick_invite_server":
     case "settings_library_server":
       return Array.isArray(record.selectedIds) && (record.selectedIds as unknown[]).every(isNumber);
     case "user_list":

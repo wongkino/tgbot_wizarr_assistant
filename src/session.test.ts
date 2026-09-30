@@ -67,7 +67,6 @@ describe("工作階段", () => {
       pick_user: { type: "pick_user", action: "enable", page: 0 },
       extend_days: { type: "extend_days", userId: 1, username: "alice" },
       invite_server: { type: "invite_server", selectedIds: [] },
-      quick_invite_server: { type: "quick_invite_server", selectedIds: [] },
       invite_expiry: { type: "invite_expiry", draft: draftSample() },
       invite_duration: { type: "invite_duration", draft: draftSample() },
       invite_library_mode: { type: "invite_library_mode", draft: draftSample() },

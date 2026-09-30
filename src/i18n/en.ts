@@ -217,7 +217,6 @@ export const catalog: Catalog = buildCatalog({
     chooseDays: "Please choose how many days to extend.",
     newExpiryLine: "New expiry: {date}",
     noServersQuick: "No verified server, cannot create a quick invite.",
-    chooseServersQuick: "Choose servers (multi-select); the invite is created right away.",
     pickVerified: "Please tap one of the verified servers.",
     quickMissingLibraries:
       "The servers are missing some default libraries, so no invite was created.\nMissing: {missing}.\nAdjust the default libraries in {settingsButton}.",
