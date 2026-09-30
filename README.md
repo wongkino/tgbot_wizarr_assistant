@@ -1,50 +1,53 @@
-# Wizarr Telegram 助理
+# Wizarr Telegram Assistant
 
-用 Telegram **回覆鍵盤**（Reply Keyboard）操作 [Wizarr](https://github.com/wizarrrr/wizarr) API。
+**English** | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md)
 
-- Docker 版在 [`docker/`](docker/)，長駐執行，預設 long polling
-- Worker 版在 [`worker/`](worker/)，由 GitHub Action 部署到 Cloudflare
+Control the [Wizarr](https://github.com/wizarrrr/wizarr) API from a Telegram **reply keyboard**.
 
-只接受允許清單裡的帳號，而且只在私訊中提供功能。共用邏輯在 `src/`。
+- Docker edition in [`docker/`](docker/): long-running, long polling by default
+- Worker edition in [`worker/`](worker/): deployed to Cloudflare by a GitHub Action
+- UI available in English, 繁體中文, 简体中文 and 日本語, defaulting to English
 
-## 功能
+Only allowlisted accounts may use it, and only in private chats. Shared logic lives in `src/`.
 
-| 鍵盤 | Wizarr API |
+## Features
+
+| Keyboard | Wizarr API |
 | --- | --- |
-| 狀態 | `GET /api/status` |
-| 列出 / 啟用 / 停用 / 延長 / 刪除使用者、重設密碼 | `GET /api/users`、`POST /api/users/{id}/enable`、`disable`、`extend`、`reset-password`、`DELETE /api/users/{id}` |
-| 列出 / 建立 / 刪除邀請 | `GET\|POST /api/invitations`、`DELETE /api/invitations/{id}` |
-| 媒體庫 | `GET /api/libraries` |
-| 伺服器 | `GET /api/servers` |
+| Status | `GET /api/status` |
+| List / enable / disable / extend / delete users, reset password | `GET /api/users`、`POST /api/users/{id}/enable`、`disable`、`extend`、`reset-password`、`DELETE /api/users/{id}` |
+| List / create / delete invites | `GET\|POST /api/invitations`、`DELETE /api/invitations/{id}` |
+| Libraries | `GET /api/libraries` |
+| Servers | `GET /api/servers` |
 
-建立邀請會依序詢問：伺服器、邀請連結有效期、帳號期限、媒體庫、下載 / 直播 / 上傳。停用與刪除都要再按一次確認。列出或建立邀請時，會再送出該邀請網址的 QR code。只有一台已驗證伺服器時會自動使用該台；多台時會列出 #ID 與名稱對照再選擇。
+Creating an invite walks through: server, link expiry, account duration, libraries, downloads / live TV / uploads. Disabling and deleting each ask for one more confirmation. Listing or creating invites also sends a QR code for each invite URL. With a single verified server it is used automatically; with several, a #ID and name list is shown to pick from.
 
-快速邀請會立即建立邀請，只使用已驗證的 Emby。預設值為：連結 7 天、帳號無限制，下載、直播與上傳皆關閉，媒體庫為動畫-已完結、動畫-連載中、電影、電視（缺少任何一個就不會建立）。這些預設值都能在主選單的「⚙️ 設定」調整：連結有效期、帳號期限、權限，以及預設媒體庫（自訂或全部已啟用的媒體庫）。連結到期前再按會沿用同一組代碼，但更改任何設定後會新建一組。設定與代碼在 Worker 版記在 KV，Docker 版重啟後會還原預設值。
+Quick invite creates an invite instantly, using verified Emby servers only. Defaults: 7-day link, unlimited account, downloads, live TV and uploads off, libraries 動畫-已完結, 動畫-連載中, 電影, 電視 (if any is missing, no invite is created). All defaults can be tuned in "⚙️ Settings" from the main menu: link expiry, account duration, permissions, and default libraries (custom or all enabled libraries). Pressing it again before the link expires reuses the same code; changing any setting creates a new one. Settings and codes are stored in KV on the Worker edition; the Docker edition resets to defaults on restart.
 
-Wizarr 在停用失敗時可能改為刪除帳號，確認畫面會先說明這件事。邀請網址若是 `/j/...` 這類相對路徑，會補上 `WIZARR_PUBLIC_URL`。
+If Wizarr cannot disable an account it may delete it instead; the confirmation screen says so first. Invite URLs that are relative paths like `/j/...` are prefixed with `WIZARR_PUBLIC_URL`.
 
-## 多語言
+## Languages
 
-介面支援繁體中文、简体中文、English、日本語，預設英文。第一次使用時機器人會要求選擇語言，之後隨時可在「⚙️ 設定 → 🌐 語言」切換。語言偏好記在每位使用者的 session store（Worker 版在 KV）。
+The UI supports 繁體中文, 简体中文, English and 日本語, and defaults to English. The bot asks for a language on first use; it can be changed anytime under "⚙️ Settings → 🌐 Language". The preference is stored per user in the session store (KV on the Worker edition).
 
-每種語言是一個獨立檔案，放在 `src/i18n/`（`en.ts`、`zh-TW.ts`、`zh-CN.ts`、`ja.ts`）。語言檔只放純字串資料（模板用 `{佔位符}`），共用邏輯集中在 `src/i18n/build.ts` 的 `buildCatalog()`；資料結構由 `CatalogStrings` 定義，漏填任何字串都會在編譯期報錯。新增語言的步驟：
+Each language is a separate file in `src/i18n/` (`en.ts`, `zh-TW.ts`, `zh-CN.ts`, `ja.ts`). Language files contain pure string data (templates use `{placeholders}`); shared logic lives in `buildCatalog()` in `src/i18n/build.ts`. The data shape is defined by `CatalogStrings`, so a missing string fails at compile time. To add a language:
 
-1. 在 `src/i18n/` 新增 `<語言代碼>.ts`，參考現有檔案用 `buildCatalog()` 匯出一份完整資料。
-2. 在 `src/i18n.ts` 匯入該檔案，把語言代碼加進 `LANGS`、`CATALOGS` 與 `LANG_LABELS`。
-3. 執行 `npm test` 與 `npm run typecheck` 確認。
+1. Create `src/i18n/<code>.ts` and export complete data via `buildCatalog()`, using the existing files as a reference.
+2. Import it in `src/i18n.ts` and add the code to `LANGS`, `CATALOGS` and `LANG_LABELS`.
+3. Run `npm test` and `npm run typecheck`.
 
 ## Docker
 
-Wizarr 在區網內時用這個方式。容器已加入 `host.docker.internal`，可連到宿主機上的 Wizarr。
+Use this when Wizarr is on a LAN. The container includes `host.docker.internal`, so it can reach Wizarr running on the host.
 
 ```bash
 cp docker/.env.example docker/.env
 docker compose -f docker/docker-compose.yml up -d --build
 ```
 
-`MODE=polling` 時不需要對外出埠。Telegram 會由容器主動連線。
+With `MODE=polling` no inbound ports are needed; the container connects out to Telegram.
 
-若要改成 webhook，把 `docker/.env` 的 `MODE` 設為 `webhook`，在前面放好 HTTPS 反向代理，並設定 webhook：
+To use a webhook instead, set `MODE` to `webhook` in `docker/.env`, put an HTTPS reverse proxy in front, and register the webhook:
 
 ```bash
 curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
@@ -53,45 +56,45 @@ curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
   -d 'allowed_updates=["message"]'
 ```
 
-| 變數 | 說明 |
+| Variable | Description |
 | --- | --- |
-| `TELEGRAM_BOT_TOKEN` | BotFather 的 token |
-| `TELEGRAM_ADMIN_IDS` | 允許操作的 Telegram 數字 ID，逗號分隔。留空時只會回覆對方的 ID |
-| `TELEGRAM_WEBHOOK_SECRET` | Webhook 密鑰。polling 可不填；webhook 必填 |
-| `WIZARR_URL` | Wizarr 位址，例如 `http://host.docker.internal:5690` |
+| `TELEGRAM_BOT_TOKEN` | Token from BotFather |
+| `TELEGRAM_ADMIN_IDS` | Telegram numeric IDs allowed to operate, comma-separated. When empty, the bot only replies with the sender's ID |
+| `TELEGRAM_WEBHOOK_SECRET` | Webhook secret. Optional for polling; required for webhook |
+| `WIZARR_URL` | Wizarr address, e.g. `http://host.docker.internal:5690` |
 | `WIZARR_API_KEY` | Wizarr → Settings → API Keys |
-| `WIZARR_PUBLIC_URL` | 邀請連結用的對外網址 |
-| `MODE` | `polling` 或 `webhook` |
-| `PORT` | HTTP 埠，預設 `8080`。`GET /health` 可做健康檢查 |
+| `WIZARR_PUBLIC_URL` | Public URL used for invite links |
+| `MODE` | `polling` or `webhook` |
+| `PORT` | HTTP port, default `8080`. `GET /health` is a health check |
 
-第一次不知道自己的 ID 時，先讓 `TELEGRAM_ADMIN_IDS` 留空並啟動，對機器人傳 `/start`，它會回覆 ID。寫進 `docker/.env` 後再重建容器。
+If you don't know your ID yet, leave `TELEGRAM_ADMIN_IDS` empty, start the bot, and send `/start`; it replies with your ID. Then write it into `docker/.env` and rebuild the container.
 
 ## Cloudflare Worker
 
-Worker 必須能從公網連到 Wizarr。Wizarr 只聽區網時請改用 Docker，或先用 Cloudflare Tunnel 把 Wizarr 公開出來。
+The Worker must be able to reach Wizarr from the public internet. If Wizarr only listens on a LAN, use Docker instead, or expose Wizarr through Cloudflare Tunnel first.
 
-安裝方式是推上 `main`，由 [`.github/workflows/deploy-worker.yml`](.github/workflows/deploy-worker.yml) 部署。Action 會先跑測試，建立或沿用名為 `tgbot-wizarr-assistant-SESSIONS` 的 KV，再部署 Worker，並把 Telegram webhook 指到 `https://tgbot-wizarr-assistant.<帳號>.workers.dev/telegram`。
+Deployment is a push to `main`, handled by [`.github/workflows/deploy-worker.yml`](.github/workflows/deploy-worker.yml). The Action runs tests first, creates or reuses a KV namespace named `tgbot-wizarr-assistant-SESSIONS`, deploys the Worker, and points the Telegram webhook at `https://tgbot-wizarr-assistant.<account>.workers.dev/telegram`.
 
-在 GitHub 倉庫的 Settings → Secrets and variables → Actions 建立這些 secrets：
+Create these secrets under Settings → Secrets and variables → Actions in the GitHub repository:
 
-| Secret | 說明 |
+| Secret | Description |
 | --- | --- |
-| `CLOUDFLARE_API_TOKEN` | 需要 Workers Scripts 與 Workers KV Storage 的編輯權限 |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 帳號 ID |
-| `TELEGRAM_BOT_TOKEN` | BotFather 的 token |
-| `TELEGRAM_ADMIN_IDS` | 允許操作的 Telegram ID，逗號分隔 |
-| `TELEGRAM_WEBHOOK_SECRET` | Webhook 密鑰，必填 |
-| `WIZARR_URL` | 公開的 Wizarr 位址 |
+| `CLOUDFLARE_API_TOKEN` | Needs edit permission for Workers Scripts and Workers KV Storage |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID |
+| `TELEGRAM_BOT_TOKEN` | Token from BotFather |
+| `TELEGRAM_ADMIN_IDS` | Telegram IDs allowed to operate, comma-separated |
+| `TELEGRAM_WEBHOOK_SECRET` | Webhook secret, required |
+| `WIZARR_URL` | Public Wizarr address |
 | `WIZARR_API_KEY` | Wizarr API key |
-| `WIZARR_PUBLIC_URL` | 邀請連結用的對外網址 |
+| `WIZARR_PUBLIC_URL` | Public URL used for invite links |
 
-API token 可在 Cloudflare 儀表板的 My Profile → API Tokens 建立。然後把程式推上 `main`，或在 Actions 頁手動執行 Deploy Worker。
+The API token can be created under My Profile → API Tokens in the Cloudflare dashboard. Then push to `main`, or run Deploy Worker manually from the Actions page.
 
-本地除錯可複製 `worker/.dev.vars.example` 為 `worker/.dev.vars`，再執行 `npm run cf:dev`。
+For local debugging, copy `worker/.dev.vars.example` to `worker/.dev.vars` and run `npm run cf:dev`.
 
-## 本機開發
+## Local development
 
-需要 Node.js 22 或以上。
+Requires Node.js 22 or later.
 
 ```bash
 npm ci
@@ -101,4 +104,4 @@ cp docker/.env.example docker/.env
 npm run dev
 ```
 
-`npm run build` 會產出 `dist/node.mjs`，給 Docker 映像使用。
+`npm run build` produces `dist/node.mjs` for the Docker image.
