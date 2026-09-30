@@ -62,9 +62,6 @@ export interface Buttons {
   setDuration: string;
   setPermissions: string;
   setLibraries: string;
-  setServers: string;
-  /** 預設伺服器改回每次手動選擇。 */
-  askServersEverytime: string;
   setLanguage: string;
   resetSettings: string;
 }
@@ -181,13 +178,6 @@ export interface Catalog {
     permissionsSaved: string;
     noServersLibrarySettings: string;
     chooseLibraryServersSettings: string;
-    /** 預設伺服器的選擇提示。 */
-    chooseServersSettings: string;
-    noServersSettings: string;
-    serversSaved: string;
-    askServersSaved: string;
-    /** 預設伺服器比對不到：{missing} {settingsButton} */
-    quickMissingServers(missing: string[], settingsButton: string): string;
     allLibrariesSaved: string;
     pickOneLibrary: string;
     librariesSaved: string;

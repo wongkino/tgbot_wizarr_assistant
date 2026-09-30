@@ -104,7 +104,7 @@ export function settingsKeyboard(cat: Catalog): ReplyMarkup {
     [
       [b.setExpiry, b.setDuration],
       [b.setPermissions, b.setLibraries],
-      [b.setServers, b.setLanguage],
+      [b.setLanguage],
       [b.resetSettings],
       [b.home],
     ],

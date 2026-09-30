@@ -67,22 +67,4 @@ describe("快速邀請設定", () => {
     const parsed = parseQuickSettings(JSON.parse(JSON.stringify(settings)));
     assert.deepEqual(parsed, settings);
   });
-
-  it("舊版設定缺少 servers 欄位時視同每次選擇", () => {
-    const settings = defaultQuickSettings();
-    const legacy = JSON.parse(JSON.stringify(settings)) as Record<string, unknown>;
-    delete legacy.servers;
-    assert.deepEqual(parseQuickSettings(legacy), settings);
-    // 空陣列也視同每次選擇
-    assert.deepEqual(parseQuickSettings({ ...settings, servers: [] }), settings);
-    assert.equal(parseQuickSettings({ ...settings, servers: [""] }), null);
-    assert.equal(parseQuickSettings({ ...settings, servers: "Emby" }), null);
-  });
-
-  it("sameQuickSettings 對伺服器順序不敏感", () => {
-    const a = { ...defaultQuickSettings(), servers: ["Emby A", "Emby B"] };
-    assert.equal(sameQuickSettings(a, { ...a, servers: ["Emby B", "Emby A"] }), true);
-    assert.equal(sameQuickSettings(a, { ...a, servers: null }), false);
-    assert.equal(sameQuickSettings(a, { ...a, servers: ["Emby A"] }), false);
-  });
 });

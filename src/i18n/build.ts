@@ -95,8 +95,6 @@ export interface CatalogStrings {
     lineExpiry: string;
     /** {duration} */
     lineDuration: string;
-    /** 快速設定的預設伺服器行：{servers} */
-    lineServers: string;
     /** {libraries} */
     lineLibraries: string;
     /** 摘要裡單台伺服器的格式：{name} {id} */
@@ -165,13 +163,6 @@ export interface CatalogStrings {
     permissionsSaved: string;
     noServersLibrarySettings: string;
     chooseLibraryServersSettings: string;
-    /** 預設伺服器的選擇提示 */
-    chooseServersSettings: string;
-    noServersSettings: string;
-    serversSaved: string;
-    askServersSaved: string;
-    /** 預設伺服器比對不到：{missing} {settingsButton} */
-    quickMissingServers: string;
     allLibrariesSaved: string;
     pickOneLibrary: string;
     librariesSaved: string;
@@ -332,11 +323,9 @@ export function buildCatalog(s: CatalogStrings): Catalog {
     quickSettingsBody: (settings) => {
       const libraries =
         settings.libraries === null ? s.words.allEnabledLibraries : join(settings.libraries.map((item) => esc(item.name)));
-      const servers = settings.servers === null ? s.buttons.askServersEverytime : join(settings.servers.map(esc));
       return [
         tpl(s.tpl.lineExpiry, { expiry: expiryLabel(settings.expiresInDays) }),
         tpl(s.tpl.lineDuration, { duration: esc(durationLabel(settings.duration, settings.unlimited)) }),
-        tpl(s.tpl.lineServers, { servers }),
         tpl(s.tpl.lineLibraries, { libraries }),
         ...permissionLines(settings),
       ];
@@ -408,12 +397,6 @@ export function buildCatalog(s: CatalogStrings): Catalog {
       permissionsSaved: s.msg.permissionsSaved,
       noServersLibrarySettings: s.msg.noServersLibrarySettings,
       chooseLibraryServersSettings: s.msg.chooseLibraryServersSettings,
-      chooseServersSettings: s.msg.chooseServersSettings,
-      noServersSettings: s.msg.noServersSettings,
-      serversSaved: s.msg.serversSaved,
-      askServersSaved: s.msg.askServersSaved,
-      quickMissingServers: (missing, settingsButton) =>
-        tpl(s.msg.quickMissingServers, { missing: join(missing.map(esc)), settingsButton }),
       allLibrariesSaved: s.msg.allLibrariesSaved,
       pickOneLibrary: s.msg.pickOneLibrary,
       librariesSaved: s.msg.librariesSaved,

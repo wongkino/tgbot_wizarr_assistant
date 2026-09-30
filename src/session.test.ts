@@ -51,13 +51,6 @@ describe("工作階段", () => {
     assert.equal(isScreen({ type: "settings_library_pick", serverId: 1, selectedIds: [3], page: 0 }), false);
   });
 
-  it("settings_server 畫面需要 selectedIds", () => {
-    assert.equal(isScreen({ type: "settings_server", selectedIds: [] }), true);
-    assert.equal(isScreen({ type: "settings_server", selectedIds: [1, 2] }), true);
-    assert.equal(isScreen({ type: "settings_server" }), false);
-    assert.equal(isScreen({ type: "settings_server", selectedIds: ["1"] }), false);
-  });
-
   it("SCREEN_PARENT 涵蓋所有畫面類型", () => {
     // 每個 Screen 類型都要能被 isScreen 接受（至少一個合法樣本），否則 KV 版會靜靜掉回主選單
     const samples: Record<string, unknown> = {
@@ -89,7 +82,6 @@ describe("工作階段", () => {
       },
       settings_library_server: { type: "settings_library_server", selectedIds: [] },
       settings_library_pick: { type: "settings_library_pick", serverIds: [1], selectedIds: [], page: 0 },
-      settings_server: { type: "settings_server", selectedIds: [] },
       settings_lang: { type: "settings_lang" },
       confirm: { type: "confirm", pending: { kind: "delete_invite", invitationId: 1, code: "ABCD" } },
     };

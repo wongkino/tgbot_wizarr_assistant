@@ -935,58 +935,6 @@ describe("回覆鍵盤", () => {
     assert.deepEqual(wizarr.created[0]?.libraryIds, [3, 12]);
   });
 
-  it("設定預設伺服器後快速邀請不再詢問", async () => {
-    const wizarr = fakeWizarr({
-      async listServers() {
-        return [server(1, "Emby 一號", "emby"), server(2, "Emby 二號", "emby")];
-      },
-    });
-    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
-    await run(B.settings, ctx);
-    await run(B.setServers, ctx);
-    assert.match(ctx.telegram.last().text, /選擇快速邀請預設的伺服器/);
-    await run(serverButton(cat, 2), ctx);
-    await run(B.serversDone, ctx);
-    assert.match(ctx.telegram.last().text, /已儲存預設伺服器/);
-    assert.match(ctx.telegram.last().text, /伺服器：Emby 二號/);
-    // 快速邀請直接使用預設伺服器，不再出現選擇畫面
-    await run(B.quickInvite, ctx);
-    assert.match(ctx.telegram.last().text, /邀請已建立/);
-    assert.deepEqual(wizarr.created[0]?.serverIds, [2]);
-  });
-
-  it("預設伺服器失效時提示重新設定", async () => {
-    const wizarr = fakeWizarr({
-      async listServers() {
-        return [server(1, "Emby 一號", "emby")];
-      },
-    });
-    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
-    await saveQuickSettings(ctx.sessions, { ...defaultQuickSettings(), servers: ["不存在的伺服器"] });
-    await run(B.quickInvite, ctx);
-    assert.match(ctx.telegram.last().text, /預設伺服器已失效：不存在的伺服器/);
-    assert.equal(wizarr.created.length, 0);
-  });
-
-  it("預設伺服器可改回每次選擇", async () => {
-    const wizarr = fakeWizarr({
-      async listServers() {
-        return [server(1, "Emby 一號", "emby"), server(2, "Emby 二號", "emby")];
-      },
-    });
-    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
-    await saveQuickSettings(ctx.sessions, { ...defaultQuickSettings(), servers: ["Emby 一號"] });
-    await run(B.settings, ctx);
-    assert.match(ctx.telegram.last().text, /伺服器：Emby 一號/);
-    await run(B.setServers, ctx);
-    // 已儲存的預設會預先勾選
-    assert.ok(ctx.telegram.buttons().includes(serverButton(cat, 1, true)));
-    await run(B.askServersEverytime, ctx);
-    assert.match(ctx.telegram.last().text, /已改為每次手動選擇伺服器/);
-    await run(B.quickInvite, ctx);
-    assert.match(ctx.telegram.last().text, /選擇伺服器/);
-  });
-
   it("列出媒體庫時按伺服器分組、不再逐條重複伺服器與 externalId", async () => {
     const wizarr = fakeWizarr({
       async listLibraries() {
