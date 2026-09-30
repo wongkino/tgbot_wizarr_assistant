@@ -736,6 +736,7 @@ describe("回覆鍵盤", () => {
     assert.match(text, /#1<\/b> Plex（plex）/);
     assert.match(text, /#2<\/b> Emby 二號（emby）/);
     await run(serverButton(cat, 2), ctx);
+    await run(B.serversDone, ctx);
     assert.match(ctx.telegram.last().text, /伺服器：<b>Emby 二號<\/b>/);
     await run(B.expiry7, ctx);
     await run(B.durUnlimited, ctx);
@@ -743,6 +744,35 @@ describe("回覆鍵盤", () => {
     await run(B.nextStep, ctx);
     await run(B.confirm, ctx);
     assert.deepEqual(wizarr.created[0]?.serverIds, [2]);
+  });
+
+  it("逐步建立可複選多台伺服器", async () => {
+    const wizarr = fakeWizarr({
+      async listServers() {
+        return [server(1, "Plex", "plex"), server(2, "Emby 二號", "emby")];
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.createInvite, ctx);
+    await run(B.serversDone, ctx);
+    assert.match(ctx.telegram.last().text, /請至少選一台伺服器/);
+    await run(serverButton(cat, 2), ctx);
+    await run(serverButton(cat, 1), ctx);
+    const buttons = ctx.telegram.buttons();
+    assert.ok(buttons.some((row) => row.includes(`✅ ${serverButton(cat, 1)}`)));
+    assert.ok(buttons.some((row) => row.includes(`✅ ${serverButton(cat, 2)}`)));
+    await run(serverButton(cat, 2), ctx);
+    assert.ok(!ctx.telegram.buttons().some((row) => row.includes(`✅ ${serverButton(cat, 2)}`)));
+    await run(serverButton(cat, 2), ctx);
+    await run(B.serversDone, ctx);
+    assert.match(ctx.telegram.last().text, /伺服器：<b>Plex、Emby 二號<\/b>/);
+    await run(B.expiry7, ctx);
+    await run(B.durUnlimited, ctx);
+    await run(B.allLibraries, ctx);
+    await run(B.nextStep, ctx);
+    assert.match(ctx.telegram.last().text, /伺服器：Plex（#1）、Emby 二號（#2）/);
+    await run(B.confirm, ctx);
+    assert.deepEqual(wizarr.created[0]?.serverIds, [1, 2]);
   });
 
   it("多台 Emby 時快速邀請會列出名稱對照", async () => {
@@ -761,8 +791,24 @@ describe("回覆鍵盤", () => {
     assert.match(text, /#1<\/b> Emby 一號/);
     assert.match(text, /#2<\/b> Emby 二號/);
     await run(serverButton(cat, 2), ctx);
+    await run(B.serversDone, ctx);
     assert.match(ctx.telegram.last().text, /邀請已建立/);
     assert.deepEqual(wizarr.created[0]?.serverIds, [2]);
+  });
+
+  it("快速邀請可複選多台 Emby", async () => {
+    const wizarr = fakeWizarr({
+      async listServers() {
+        return [server(1, "Emby 一號", "emby"), server(2, "Emby 二號", "emby")];
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.quickInvite, ctx);
+    await run(serverButton(cat, 1), ctx);
+    await run(serverButton(cat, 2), ctx);
+    await run(B.serversDone, ctx);
+    assert.match(ctx.telegram.last().text, /邀請已建立/);
+    assert.deepEqual(wizarr.created[0]?.serverIds, [1, 2]);
   });
 
   it("多台 Emby 時設定預設媒體庫會列出名稱對照", async () => {

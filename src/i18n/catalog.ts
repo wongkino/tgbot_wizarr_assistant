@@ -49,6 +49,7 @@ export interface Buttons {
   allLibraries: string;
   pickLibraries: string;
   librariesDone: string;
+  serversDone: string;
   nextStep: string;
   toggleDownloads: string;
   toggleLive: string;
@@ -181,7 +182,8 @@ export interface Catalog {
     librariesSaved: string;
     libraryFallbackName(id: number): string;
     noServers: string;
-    inviteServerExpiryPrompt(serverName: string): string;
+    pickOneServer: string;
+    inviteServerExpiryPrompt(serverNames: string[]): string;
     inviteDurationPrompt: string;
     libraryModePrompt: string;
     noLibrariesFallback: string;

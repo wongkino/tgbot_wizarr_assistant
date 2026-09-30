@@ -44,14 +44,15 @@ export function isScreen(value: unknown): value is Screen {
     case "invites":
     case "libraries":
     case "servers":
-    case "invite_server":
-    case "quick_invite_server":
     case "settings":
     case "settings_expiry":
     case "settings_duration":
     case "settings_library_server":
     case "settings_lang":
       return true;
+    case "invite_server":
+    case "quick_invite_server":
+      return Array.isArray(record.selectedIds) && (record.selectedIds as unknown[]).every(isNumber);
     case "user_list":
     case "library_list":
     case "server_list":
@@ -186,6 +187,8 @@ function isDraft(value: unknown): boolean {
   const draft = asRecord(value);
   return Boolean(
     draft &&
+      Array.isArray(draft.serverIds) &&
+      Array.isArray(draft.serverNames) &&
       Array.isArray(draft.libraryIds) &&
       Array.isArray(draft.libraryNames) &&
       isPermissionFlags(draft),
@@ -214,7 +217,6 @@ function isPending(value: unknown): boolean {
   if (pending.kind === "create_invite") {
     const input = asRecord(pending.input);
     return (
-      typeof pending.serverName === "string" &&
       Boolean(input) &&
       Array.isArray(input?.serverIds) &&
       (input?.expiresInDays === null || EXPIRY_DAYS.has(input?.expiresInDays as number)) &&

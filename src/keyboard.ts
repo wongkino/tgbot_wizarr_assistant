@@ -130,8 +130,8 @@ export function userButton(cat: Catalog, id: number): string {
   return labeledButton(cat.labels.user, id);
 }
 
-export function serverButton(cat: Catalog, id: number): string {
-  return labeledButton(cat.labels.server, id);
+export function serverButton(cat: Catalog, id: number, selected = false): string {
+  return `${selected ? "✅ " : ""}${labeledButton(cat.labels.server, id)}`;
 }
 
 export function libraryButton(cat: Catalog, id: number, selected: boolean): string {
@@ -147,7 +147,7 @@ export function parseUserButton(cat: Catalog, text: string): number | null {
 }
 
 export function parseServerButton(cat: Catalog, text: string): number | null {
-  return parseLabeledId(cat.labels.server, text);
+  return parseId(text, new RegExp(`^(?:✅ )?${escapeRegExp(cat.labels.server)} #(\\d+)$`));
 }
 
 export function parseLibraryButton(cat: Catalog, text: string): number | null {

@@ -97,7 +97,9 @@ export interface CatalogStrings {
     lineDuration: string;
     /** {libraries} */
     lineLibraries: string;
-    /** 邀請摘要第一行：{name} {id} */
+    /** 摘要裡單台伺服器的格式：{name} {id} */
+    serverEntry: string;
+    /** 邀請摘要第一行：{servers}（預先組好的多台字串） */
     summaryServer: string;
     /** {verb} */
     actionPrompt: string;
@@ -166,7 +168,8 @@ export interface CatalogStrings {
     /** {id} */
     libraryFallbackName: string;
     noServers: string;
-    /** {serverName} */
+    pickOneServer: string;
+    /** {serverName}（多台時已預先 join） */
     inviteServerExpiryPrompt: string;
     inviteDurationPrompt: string;
     libraryModePrompt: string;
@@ -323,8 +326,15 @@ export function buildCatalog(s: CatalogStrings): Catalog {
         : draft.libraryNames.length
           ? join(draft.libraryNames.map(esc))
           : join(draft.libraryIds.map((id) => `#${id}`));
+      const servers = draft.serverNames.length
+        ? join(
+            draft.serverNames.map((name, index) =>
+              tpl(s.tpl.serverEntry, { name: esc(name), id: draft.serverIds[index] ?? "?" }),
+            ),
+          )
+        : s.words.notSpecified;
       return [
-        tpl(s.tpl.summaryServer, { name: esc(draft.serverName ?? s.words.notSpecified), id: draft.serverId ?? "?" }),
+        tpl(s.tpl.summaryServer, { servers }),
         tpl(s.tpl.lineExpiry, { expiry: expiryLabel(draft.expiresInDays === undefined ? null : draft.expiresInDays) }),
         tpl(s.tpl.lineDuration, { duration: esc(durationLabel(draft.duration ?? "unlimited", draft.unlimited === true)) }),
         tpl(s.tpl.lineLibraries, { libraries }),
@@ -381,7 +391,9 @@ export function buildCatalog(s: CatalogStrings): Catalog {
       librariesSaved: s.msg.librariesSaved,
       libraryFallbackName: (id) => tpl(s.msg.libraryFallbackName, { id }),
       noServers: s.msg.noServers,
-      inviteServerExpiryPrompt: (serverName) => tpl(s.msg.inviteServerExpiryPrompt, { serverName: esc(serverName) }),
+      pickOneServer: s.msg.pickOneServer,
+      inviteServerExpiryPrompt: (serverNames) =>
+        tpl(s.msg.inviteServerExpiryPrompt, { serverName: join(serverNames.map(esc)) }),
       inviteDurationPrompt: s.msg.inviteDurationPrompt,
       libraryModePrompt: s.msg.libraryModePrompt,
       noLibrariesFallback: s.msg.noLibrariesFallback,

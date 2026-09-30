@@ -224,9 +224,9 @@ async function dispatch(
     case "extend_days":
       return handleExtendDays(screen, text, ctx, chatId);
     case "invite_server":
-      return handleInviteServer(text, ctx, chatId);
+      return handleInviteServer(screen, text, ctx, chatId);
     case "quick_invite_server":
-      return handleQuickInviteServer(text, ctx, chatId);
+      return handleQuickInviteServer(screen, text, ctx, chatId);
     case "invite_expiry":
       return handleInviteExpiry(screen.draft, text, ctx, chatId);
     case "invite_duration":
@@ -404,26 +404,26 @@ async function beginQuickInvite(ctx: Req, chatId: number): Promise<Screen> {
     return { type: "invites" };
   }
   const only = servers.length === 1 ? servers[0] : undefined;
-  if (only) return createQuickInvite(ctx, chatId, only);
-  await send(
-    ctx,
-    chatId,
-    `${ctx.cat.msg.chooseEmbyQuick}\n\n${formatServerLines(ctx.cat, servers)}`,
-    serverChoiceKeyboard(ctx.cat, servers),
-  );
-  return { type: "quick_invite_server" };
+  if (only) return createQuickInvite(ctx, chatId, [only]);
+  return renderServerPick(ctx, chatId, "quick_invite_server", servers, []);
 }
 
-async function handleQuickInviteServer(text: string, ctx: Req, chatId: number): Promise<Screen> {
+async function handleQuickInviteServer(
+  screen: Extract<Screen, { type: "quick_invite_server" }>,
+  text: string,
+  ctx: Req,
+  chatId: number,
+): Promise<Screen> {
   const servers = await embyServers(ctx);
-  const server = await chosenServer(text, ctx, chatId, servers, ctx.cat.msg.pickEmbyVerified);
-  if (!server) return { type: "quick_invite_server" };
-  return createQuickInvite(ctx, chatId, server);
+  return handleServerPick(screen, text, ctx, chatId, servers, ctx.cat.msg.pickEmbyVerified, (chosen) =>
+    createQuickInvite(ctx, chatId, chosen),
+  );
 }
 
-async function createQuickInvite(ctx: Req, chatId: number, server: ServerInfo): Promise<Screen> {
+async function createQuickInvite(ctx: Req, chatId: number, servers: ServerInfo[]): Promise<Screen> {
+  const serverIds = servers.map((server) => server.id).sort((a, b) => a - b);
   const settings = await loadQuickSettings(ctx.sessions);
-  const enabled = await enabledLibraries(ctx, server.id);
+  const enabled = await enabledLibraries(ctx, serverIds);
   let libraryIds: number[];
   let libraries: string;
   if (settings.libraries === null) {
@@ -444,13 +444,13 @@ async function createQuickInvite(ctx: Req, chatId: number, server: ServerInfo): 
     libraries = ctx.cat.librariesLine(selected.map((library) => library.name));
   }
   const invites = await ctx.wizarr.listInvitations();
-  const existing = reusableQuickInvite(invites, libraryIds, settings, await savedQuickInvite(ctx, server.id));
+  const existing = reusableQuickInvite(invites, libraryIds, settings, await savedQuickInvite(ctx, serverIds));
   if (existing) {
     await sendCreatedInvitation(ctx, chatId, existing, libraries, ctx.cat.msg.quickReuseTitle);
     return { type: "invites" };
   }
   const invitation = await ctx.wizarr.createInvitation({
-    serverIds: [server.id],
+    serverIds,
     expiresInDays: settings.expiresInDays,
     duration: settings.duration,
     unlimited: settings.unlimited,
@@ -460,7 +460,7 @@ async function createQuickInvite(ctx: Req, chatId: number, server: ServerInfo): 
     allowMobileUploads: settings.allowMobileUploads,
   });
   try {
-    await rememberQuickInvite(ctx, server.id, invitation.code, settings, libraryIds);
+    await rememberQuickInvite(ctx, serverIds, invitation.code, settings, libraryIds);
   } catch (error) {
     console.error("[bot] 無法記住快速邀請", error instanceof Error ? error.message : error);
   }
@@ -510,8 +510,8 @@ interface SavedQuickInvite {
   settings: QuickInviteSettings;
 }
 
-async function savedQuickInvite(ctx: Req, serverId: number): Promise<SavedQuickInvite | null> {
-  const raw = await ctx.sessions.getText(`quick-invite:${serverId}`);
+async function savedQuickInvite(ctx: Req, serverIds: number[]): Promise<SavedQuickInvite | null> {
+  const raw = await ctx.sessions.getText(quickInviteKey(serverIds));
   if (!raw) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -530,7 +530,7 @@ async function savedQuickInvite(ctx: Req, serverId: number): Promise<SavedQuickI
 
 async function rememberQuickInvite(
   ctx: Req,
-  serverId: number,
+  serverIds: number[],
   code: string,
   settings: QuickInviteSettings,
   libraryIds: number[],
@@ -538,7 +538,12 @@ async function rememberQuickInvite(
   if (!code) return;
   const saved: SavedQuickInvite = { code, libraryIds, settings };
   const ttl = ((settings.expiresInDays ?? 365) + 1) * 24 * 60 * 60;
-  await ctx.sessions.setText(`quick-invite:${serverId}`, JSON.stringify(saved), ttl);
+  await ctx.sessions.setText(quickInviteKey(serverIds), JSON.stringify(saved), ttl);
+}
+
+/** 快速邀請代碼沿用的鍵：同一組伺服器（排序後）共用一組代碼。 */
+function quickInviteKey(serverIds: number[]): string {
+  return `quick-invite:${[...serverIds].sort((a, b) => a - b).join(",")}`;
 }
 
 function sameIds(left: number[], right: number[]): boolean {
@@ -687,7 +692,7 @@ async function handleSettingsLibraryServer(text: string, ctx: Req, chatId: numbe
 async function selectedLibraryIds(ctx: Req, serverId: number): Promise<number[]> {
   const settings = await loadQuickSettings(ctx.sessions);
   if (settings.libraries === null) return [];
-  const enabled = await enabledLibraries(ctx, serverId);
+  const enabled = await enabledLibraries(ctx, [serverId]);
   return matchLibraries(enabled, settings.libraries).selected.map((library) => library.id);
 }
 
@@ -700,7 +705,7 @@ async function renderSettingsLibraryPick(
   notice?: string,
 ): Promise<Screen> {
   const B = ctx.cat.buttons;
-  const libraries = await enabledLibraries(ctx, serverId);
+  const libraries = await enabledLibraries(ctx, [serverId]);
   const view = pageWindow(libraries, page, PAGE.libraries);
   const rows = choiceRows(
     ctx.cat,
@@ -733,7 +738,7 @@ async function handleSettingsLibraryPick(
     if (!selectedIds.length) {
       return renderSettingsLibraryPick(ctx, chatId, serverId, selectedIds, screen.page, ctx.cat.msg.pickOneLibrary);
     }
-    const enabled = await enabledLibraries(ctx, serverId);
+    const enabled = await enabledLibraries(ctx, [serverId]);
     const libraries: QuickLibraryMatcher[] = selectedIds.map((id) => {
       const library = enabled.find((item) => item.id === id);
       return { name: library?.name ?? ctx.cat.msg.libraryFallbackName(id), externalId: library?.externalId ?? null };
@@ -743,7 +748,7 @@ async function handleSettingsLibraryPick(
     return showSettings(ctx, chatId, ctx.cat.msg.librariesSaved);
   }
   const libraryId = parseLibraryButton(ctx.cat, text);
-  const enabled = await enabledLibraries(ctx, serverId);
+  const enabled = await enabledLibraries(ctx, [serverId]);
   const library = libraryId == null ? undefined : enabled.find((item) => item.id === libraryId);
   if (!library) {
     return renderSettingsLibraryPick(ctx, chatId, serverId, selectedIds, screen.page, ctx.cat.msg.pickOneLibrary);
@@ -761,24 +766,29 @@ async function beginCreateInvite(ctx: Req, chatId: number): Promise<Screen> {
     return { type: "invites" };
   }
   const only = servers.length === 1 ? servers[0] : undefined;
-  if (only) return beginInviteExpiry(ctx, chatId, only);
-  await send(ctx, chatId, formatServerChoices(ctx.cat, servers), serverChoiceKeyboard(ctx.cat, servers));
-  return { type: "invite_server" };
+  if (only) return beginInviteExpiry(ctx, chatId, [only]);
+  return renderServerPick(ctx, chatId, "invite_server", servers, []);
 }
 
-async function beginInviteExpiry(ctx: Req, chatId: number, server: ServerInfo): Promise<Screen> {
+async function beginInviteExpiry(ctx: Req, chatId: number, servers: ServerInfo[]): Promise<Screen> {
+  const ordered = [...servers].sort((a, b) => a.id - b.id);
   const draft = emptyDraft();
-  draft.serverId = server.id;
-  draft.serverName = server.name;
-  await send(ctx, chatId, ctx.cat.msg.inviteServerExpiryPrompt(server.name), expiryKeyboard(ctx.cat));
+  draft.serverIds = ordered.map((server) => server.id);
+  draft.serverNames = ordered.map((server) => server.name);
+  await send(ctx, chatId, ctx.cat.msg.inviteServerExpiryPrompt(draft.serverNames), expiryKeyboard(ctx.cat));
   return { type: "invite_expiry", draft };
 }
 
-async function handleInviteServer(text: string, ctx: Req, chatId: number): Promise<Screen> {
+async function handleInviteServer(
+  screen: Extract<Screen, { type: "invite_server" }>,
+  text: string,
+  ctx: Req,
+  chatId: number,
+): Promise<Screen> {
   const servers = await verifiedServers(ctx);
-  const server = await chosenServer(text, ctx, chatId, servers, ctx.cat.msg.pickVerified);
-  if (!server) return { type: "invite_server" };
-  return beginInviteExpiry(ctx, chatId, server);
+  return handleServerPick(screen, text, ctx, chatId, servers, ctx.cat.msg.pickVerified, (chosen) =>
+    beginInviteExpiry(ctx, chatId, chosen),
+  );
 }
 
 async function handleInviteExpiry(draft: InviteDraft, text: string, ctx: Req, chatId: number): Promise<Screen> {
@@ -807,7 +817,7 @@ async function handleLibraryMode(draft: InviteDraft, text: string, ctx: Req, cha
   const B = ctx.cat.buttons;
   if (text === B.allLibraries) return showPermissions(ctx, chatId, allLibraries(draft));
   if (text === B.pickLibraries) {
-    const libraries = await enabledLibraries(ctx, draft.serverId);
+    const libraries = await enabledLibraries(ctx, draft.serverIds);
     if (!libraries.length) {
       const next = allLibraries(draft);
       await send(
@@ -831,7 +841,7 @@ async function handleLibraryPick(
   chatId: number,
 ): Promise<Screen> {
   const B = ctx.cat.buttons;
-  const libraries = await enabledLibraries(ctx, screen.draft.serverId);
+  const libraries = await enabledLibraries(ctx, screen.draft.serverIds);
   if (text === B.prev || text === B.next) {
     return renderLibraryPick(ctx, chatId, screen.draft, shiftPage(B, screen.page, text), libraries);
   }
@@ -922,7 +932,7 @@ async function askCreateConfirm(ctx: Req, chatId: number, draft: InviteDraft): P
     return { type: "invites" };
   }
   await send(ctx, chatId, formatInviteSummary(ctx.cat, draft), confirmKeyboard(ctx.cat));
-  return { type: "confirm", pending: { kind: "create_invite", input, serverName: draft.serverName ?? "" } };
+  return { type: "confirm", pending: { kind: "create_invite", input } };
 }
 
 async function beginDeleteInvite(ctx: Req, chatId: number, page: number): Promise<Screen> {
@@ -1055,9 +1065,9 @@ async function showList<T>(
   return view.page;
 }
 
-async function enabledLibraries(ctx: Req, serverId: number | undefined): Promise<LibraryInfo[]> {
+async function enabledLibraries(ctx: Req, serverIds: number[]): Promise<LibraryInfo[]> {
   const libraries = await ctx.wizarr.listLibraries();
-  return libraries.filter((library) => library.enabled && library.serverId === serverId);
+  return libraries.filter((library) => library.enabled && library.serverId != null && serverIds.includes(library.serverId));
 }
 
 function findUser(cat: Catalog, users: UserInfo[], text: string): UserInfo | undefined {
@@ -1069,11 +1079,11 @@ function findUser(cat: Catalog, users: UserInfo[], text: string): UserInfo | und
 }
 
 function toInvitationInput(draft: InviteDraft): CreateInvitationInput | null {
-  if (!draft.serverId || draft.expiresInDays === undefined || !draft.duration || draft.unlimited === undefined) {
+  if (!draft.serverIds.length || draft.expiresInDays === undefined || !draft.duration || draft.unlimited === undefined) {
     return null;
   }
   return {
-    serverIds: [draft.serverId],
+    serverIds: draft.serverIds,
     expiresInDays: draft.expiresInDays,
     duration: draft.duration,
     unlimited: draft.unlimited,
@@ -1103,6 +1113,63 @@ async function chosenServer(
   return undefined;
 }
 
+/** 多選伺服器的訊息 + 鍵盤（✅ 切換、選好了送出）。 */
+async function renderServerPick(
+  ctx: Req,
+  chatId: number,
+  type: "invite_server" | "quick_invite_server",
+  servers: ServerInfo[],
+  selectedIds: number[],
+  notice?: string,
+): Promise<Screen> {
+  const base =
+    type === "quick_invite_server"
+      ? `${ctx.cat.msg.chooseEmbyQuick}\n\n${formatServerLines(ctx.cat, servers)}`
+      : formatServerChoices(ctx.cat, servers);
+  await send(ctx, chatId, notice ? `${notice}\n\n${base}` : base, serverMultiKeyboard(ctx.cat, servers, selectedIds));
+  return { type, selectedIds };
+}
+
+function serverMultiKeyboard(cat: Catalog, servers: ServerInfo[], selectedIds: number[]): ReplyMarkup {
+  return markup(
+    choiceRows(
+      cat,
+      servers.map((server) => serverButton(cat, server.id, selectedIds.includes(server.id))),
+      undefined,
+      [[cat.buttons.serversDone]],
+    ),
+    cat.ph.chooseServer,
+  );
+}
+
+/** 兩種邀請流程共用的多選伺服器處理：切換勾選，按「選好了」交給 done 繼續。 */
+async function handleServerPick(
+  screen: { type: "invite_server" | "quick_invite_server"; selectedIds: number[] },
+  text: string,
+  ctx: Req,
+  chatId: number,
+  servers: ServerInfo[],
+  miss: string,
+  done: (chosen: ServerInfo[]) => Promise<Screen>,
+): Promise<Screen> {
+  if (text === ctx.cat.buttons.serversDone) {
+    const chosen = servers.filter((server) => screen.selectedIds.includes(server.id));
+    if (!chosen.length) {
+      return renderServerPick(ctx, chatId, screen.type, servers, screen.selectedIds, ctx.cat.msg.pickOneServer);
+    }
+    return done(chosen);
+  }
+  const serverId = parseServerButton(ctx.cat, text);
+  const server = serverId == null ? undefined : servers.find((item) => item.id === serverId);
+  if (!server) {
+    return renderServerPick(ctx, chatId, screen.type, servers, screen.selectedIds, miss);
+  }
+  const next = screen.selectedIds.includes(server.id)
+    ? screen.selectedIds.filter((id) => id !== server.id)
+    : [...screen.selectedIds, server.id].sort((a, b) => a - b);
+  return renderServerPick(ctx, chatId, screen.type, servers, next);
+}
+
 function extendDaysKeyboard(cat: Catalog): ReplyMarkup {
   const B = cat.buttons;
   return markup(withCancel(cat, [B.days7, B.days30, B.days90]), cat.ph.chooseDays);
@@ -1124,6 +1191,8 @@ function choiceRows(cat: Catalog, labels: string[], view?: { page: number; pages
 
 function emptyDraft(): InviteDraft {
   return {
+    serverIds: [],
+    serverNames: [],
     libraryIds: [],
     libraryNames: [],
     allowDownloads: false,

@@ -149,8 +149,8 @@ export type UserAction = "enable" | "disable" | "extend" | "delete" | "reset";
 export type InviteFilter = "all" | "pending" | "used" | "expired";
 
 export interface InviteDraft extends PermissionFlags {
-  serverId?: number;
-  serverName?: string;
+  serverIds: number[];
+  serverNames: string[];
   expiresInDays?: 1 | 7 | 30 | null;
   duration?: string;
   unlimited?: boolean;
@@ -163,7 +163,7 @@ export type PendingAction =
   | { kind: "disable_user"; userId: number; username: string }
   | { kind: "delete_user"; userId: number; username: string }
   | { kind: "delete_invite"; invitationId: number; code: string }
-  | { kind: "create_invite"; input: CreateInvitationInput; serverName: string };
+  | { kind: "create_invite"; input: CreateInvitationInput };
 
 export type Screen =
   | { type: "main" }
@@ -177,8 +177,8 @@ export type Screen =
   | { type: "server_list"; page: number }
   | { type: "pick_user"; action: UserAction; page: number }
   | { type: "extend_days"; userId: number; username: string }
-  | { type: "invite_server" }
-  | { type: "quick_invite_server" }
+  | { type: "invite_server"; selectedIds: number[] }
+  | { type: "quick_invite_server"; selectedIds: number[] }
   | { type: "invite_expiry"; draft: InviteDraft }
   | { type: "invite_duration"; draft: InviteDraft }
   | { type: "invite_library_mode"; draft: InviteDraft }

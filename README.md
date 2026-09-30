@@ -20,7 +20,7 @@ Only allowlisted accounts may use it, and only in private chats. Shared logic li
 | Libraries | `GET /api/libraries` |
 | Servers | `GET /api/servers` |
 
-Creating an invite walks through: server, link expiry, account duration, libraries, downloads / live TV / uploads. Disabling and deleting each ask for one more confirmation. Listing or creating invites also sends a QR code for each invite URL. With a single verified server it is used automatically; with several, a #ID and name list is shown to pick from.
+Creating an invite walks through: server, link expiry, account duration, libraries, downloads / live TV / uploads. Disabling and deleting each ask for one more confirmation. Listing or creating invites also sends a QR code for each invite URL. With a single verified server it is used automatically; with several, a #ID and name list is shown with multi-select toggles, so one invite can cover multiple servers at once.
 
 Quick invite creates an invite instantly, using verified Emby servers only. Defaults: 7-day link, unlimited account, downloads, live TV and uploads off, and all enabled libraries. All defaults can be tuned in "⚙️ Settings" from the main menu: link expiry, account duration, permissions, and default libraries (optionally a custom set; if the server is missing any selected library, no invite is created). Pressing it again before the link expires reuses the same code; changing any setting creates a new one. Settings and codes are stored in KV on the Worker edition; the Docker edition resets to defaults on restart.
 
