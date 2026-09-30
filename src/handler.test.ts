@@ -828,7 +828,62 @@ describe("回覆鍵盤", () => {
     assert.match(text, /#1<\/b> Emby 一號/);
     assert.match(text, /#2<\/b> Emby 二號/);
     await run(serverButton(cat, 1), ctx);
+    await run(B.serversDone, ctx);
     assert.match(ctx.telegram.last().text, /選擇媒體庫/);
+  });
+
+  it("設定預設媒體庫可複選多台，媒體庫合併顯示", async () => {
+    const wizarr = fakeWizarr({
+      async listServers() {
+        return [server(1, "Emby 一號", "emby"), server(2, "Emby 二號", "emby")];
+      },
+      async listLibraries() {
+        return [
+          { ...library(3, "Movies", "mov"), serverId: 1, serverName: "Emby 一號" },
+          { ...library(12, "Anime", "ani"), serverId: 2, serverName: "Emby 二號" },
+        ];
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.settings, ctx);
+    await run(B.setLibraries, ctx);
+    await run(serverButton(cat, 1), ctx);
+    await run(serverButton(cat, 2), ctx);
+    await run(B.serversDone, ctx);
+    const text = ctx.telegram.last().text;
+    assert.match(text, /選擇媒體庫/);
+    assert.match(text, /Movies/);
+    assert.match(text, /Anime/);
+    await run(libraryButton(cat, 3, false), ctx);
+    await run(libraryButton(cat, 12, false), ctx);
+    await run(B.librariesDone, ctx);
+    assert.match(ctx.telegram.last().text, /媒體庫：Movies、Anime/);
+    await run(B.quickInvite, ctx);
+    await run(serverButton(cat, 1), ctx);
+    await run(serverButton(cat, 2), ctx);
+    await run(B.serversDone, ctx);
+    assert.deepEqual(wizarr.created[0]?.serverIds, [1, 2]);
+    assert.deepEqual(wizarr.created[0]?.libraryIds, [3, 12]);
+  });
+
+  it("列出媒體庫時按伺服器分組、不再逐條重複伺服器與 externalId", async () => {
+    const wizarr = fakeWizarr({
+      async listLibraries() {
+        return [
+          { ...library(3, "Movies", "mov"), serverId: 1, serverName: "Emby 一號" },
+          { ...library(12, "Anime", "ani"), serverId: 2, serverName: "Emby 二號" },
+          { ...library(13, "TV Shows", "tv"), serverId: 2, serverName: "Emby 二號", enabled: false },
+        ];
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.listLibraries, ctx);
+    const text = ctx.telegram.last().text;
+    assert.equal(text.match(/<b>Emby 一號<\/b>/g)?.length, 1);
+    assert.equal(text.match(/<b>Emby 二號<\/b>/g)?.length, 1);
+    assert.match(text, /<b>Emby 一號<\/b>\n<b>#3<\/b> Movies · 已啟用\n/);
+    assert.match(text, /<b>Emby 二號<\/b>\n<b>#12<\/b> Anime · 已啟用\n<b>#13<\/b> TV Shows · 已停用/);
+    assert.ok(!text.includes("mov") && !text.includes("ani") && !text.includes("· tv"));
   });
 
   it("列出邀請時會送出每一組網址的 QR code", async () => {

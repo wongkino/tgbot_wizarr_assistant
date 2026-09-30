@@ -189,8 +189,8 @@ export type Screen =
   | { type: "settings_expiry" }
   | { type: "settings_duration" }
   | { type: "settings_permissions"; permissions: PermissionFlags }
-  | { type: "settings_library_server" }
-  | { type: "settings_library_pick"; serverId: number; selectedIds: number[]; page: number }
+  | { type: "settings_library_server"; selectedIds: number[] }
+  | { type: "settings_library_pick"; serverIds: number[]; selectedIds: number[]; page: number }
   | { type: "settings_lang" }
   | { type: "confirm"; pending: PendingAction };
 

@@ -32,7 +32,9 @@ describe("工作階段", () => {
     assert.equal(isScreen({ type: "settings" }), true);
     assert.equal(isScreen({ type: "settings_expiry" }), true);
     assert.equal(isScreen({ type: "settings_duration" }), true);
-    assert.equal(isScreen({ type: "settings_library_server" }), true);
+    assert.equal(isScreen({ type: "settings_library_server", selectedIds: [] }), true);
+    assert.equal(isScreen({ type: "settings_library_server", selectedIds: [1, 2] }), true);
+    assert.equal(isScreen({ type: "settings_library_server" }), false);
     assert.equal(isScreen({ type: "settings_lang" }), true);
     assert.equal(
       isScreen({
@@ -43,8 +45,9 @@ describe("工作階段", () => {
     );
     assert.equal(isScreen({ type: "settings_permissions", permissions: { allowDownloads: "yes" } }), false);
     assert.equal(isScreen({ type: "settings_permissions" }), false);
-    assert.equal(isScreen({ type: "settings_library_pick", serverId: 1, selectedIds: [3, 12], page: 0 }), true);
-    assert.equal(isScreen({ type: "settings_library_pick", serverId: 1, selectedIds: "all", page: 0 }), false);
-    assert.equal(isScreen({ type: "settings_library_pick", serverId: 1, selectedIds: [3], page: "0" }), false);
+    assert.equal(isScreen({ type: "settings_library_pick", serverIds: [1], selectedIds: [3, 12], page: 0 }), true);
+    assert.equal(isScreen({ type: "settings_library_pick", serverIds: [1], selectedIds: "all", page: 0 }), false);
+    assert.equal(isScreen({ type: "settings_library_pick", serverIds: [1], selectedIds: [3], page: "0" }), false);
+    assert.equal(isScreen({ type: "settings_library_pick", serverId: 1, selectedIds: [3], page: 0 }), false);
   });
 });

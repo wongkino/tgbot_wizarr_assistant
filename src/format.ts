@@ -91,9 +91,18 @@ export function formatInviteList(cat: Catalog, view: PageView<InvitationInfo>, f
 }
 
 export function formatLibraries(cat: Catalog, view: PageView<LibraryInfo>): string {
-  return formatPaged(cat, view, cat.librariesTitle, cat.librariesUnit, cat.librariesEmpty, (library) =>
-    cat.libraryItem(library),
-  );
+  if (view.total === 0) return cat.librariesEmpty;
+  const lines = [cat.pagedTitle(cat.librariesTitle, view.page, view.pages, view.total, cat.librariesUnit), ""];
+  let lastServer: string | null = null;
+  for (const library of view.items) {
+    if (library.serverName !== lastServer) {
+      if (lastServer !== null) lines.push("");
+      lines.push(`<b>${esc(library.serverName)}</b>`);
+      lastServer = library.serverName;
+    }
+    lines.push(cat.libraryItem(library));
+  }
+  return lines.join("\n");
 }
 
 export function formatServers(cat: Catalog, view: PageView<ServerInfo>): string {

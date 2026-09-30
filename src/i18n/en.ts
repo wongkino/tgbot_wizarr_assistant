@@ -234,7 +234,7 @@ export const catalog: Catalog = buildCatalog({
     permissionsToggleOrConfirm: "Toggle permissions or press Confirm to save.",
     permissionsSaved: "Permissions saved.",
     noEmbySettings: "No verified Emby server, cannot set default libraries.",
-    chooseEmbySettings: "Choose the Emby server whose default libraries to set.",
+    chooseEmbySettings: "Choose the Emby servers whose default libraries to set (multi-select).",
     allLibrariesSaved: "Now using all enabled libraries.",
     pickOneLibrary: "Pick at least one library, or use all libraries.",
     pickOneServer: "Pick at least one server.",

@@ -280,10 +280,8 @@ export function buildCatalog(s: CatalogStrings): Catalog {
     librariesTitle: s.titles.libraries,
     librariesUnit: s.titles.librariesUnit,
     librariesEmpty: s.titles.librariesEmpty,
-    libraryItem: (library) => [
+    libraryItem: (library) =>
       `<b>#${library.id}</b> ${esc(library.name)} · ${library.enabled ? s.words.enabled : s.words.disabled}`,
-      `${esc(library.serverName)}${library.externalId ? ` · ${esc(library.externalId)}` : ""}`,
-    ],
     serversTitle: s.titles.servers,
     serversUnit: s.titles.serversUnit,
     serversEmpty: s.titles.serversEmpty,

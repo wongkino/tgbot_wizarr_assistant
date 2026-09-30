@@ -233,7 +233,7 @@ export const catalog: Catalog = buildCatalog({
     permissionsToggleOrConfirm: "権限を切り替えるか、確認を押して保存してください。",
     permissionsSaved: "権限を保存しました。",
     noEmbySettings: "認証済みの Emby サーバーがないため、既定ライブラリを設定できません。",
-    chooseEmbySettings: "既定ライブラリを設定する Emby サーバーを選択してください。",
+    chooseEmbySettings: "既定ライブラリを設定する Emby サーバーを選択してください（複数選択可）。",
     allLibrariesSaved: "すべての有効なライブラリに切り替えました。",
     pickOneLibrary: "少なくとも 1 つのライブラリを選ぶか、すべてのライブラリを使用してください。",
     pickOneServer: "サーバーを 1 台以上選んでください。",

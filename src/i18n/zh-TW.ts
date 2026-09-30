@@ -225,7 +225,7 @@ export const catalog: Catalog = buildCatalog({
     permissionsToggleOrConfirm: "請切換權限，或按確認儲存。",
     permissionsSaved: "已儲存權限。",
     noEmbySettings: "沒有已驗證的 Emby 伺服器，無法設定預設媒體庫。",
-    chooseEmbySettings: "選擇要設定預設媒體庫的 Emby 伺服器。",
+    chooseEmbySettings: "選擇要設定預設媒體庫的 Emby 伺服器（可複選）。",
     allLibrariesSaved: "已改用全部已啟用的媒體庫。",
     pickOneLibrary: "請至少選一個媒體庫，或改用全部媒體庫。",
     pickOneServer: "請至少選一台伺服器。",

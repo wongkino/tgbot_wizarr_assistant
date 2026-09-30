@@ -113,7 +113,7 @@ export interface Catalog {
   librariesTitle: string;
   librariesUnit: string;
   librariesEmpty: string;
-  libraryItem(library: LibraryInfo): string[];
+  libraryItem(library: LibraryInfo): string;
   serversTitle: string;
   serversUnit: string;
   serversEmpty: string;

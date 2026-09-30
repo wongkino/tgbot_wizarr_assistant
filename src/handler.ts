@@ -248,7 +248,7 @@ async function dispatch(
     case "settings_permissions":
       return handleSettingsPermissions(screen, text, ctx, chatId);
     case "settings_library_server":
-      return handleSettingsLibraryServer(text, ctx, chatId);
+      return handleSettingsLibraryServer(screen, text, ctx, chatId);
     case "settings_library_pick":
       return handleSettingsLibraryPick(screen, text, ctx, chatId);
     case "settings_lang":
@@ -671,41 +671,42 @@ async function beginSettingsLibraries(ctx: Req, chatId: number): Promise<Screen>
     return { type: "settings" };
   }
   if (servers.length === 1) {
-    return renderSettingsLibraryPick(ctx, chatId, servers[0].id, await selectedLibraryIds(ctx, servers[0].id), 0);
+    const serverIds = [servers[0].id];
+    return renderSettingsLibraryPick(ctx, chatId, serverIds, await selectedLibraryIds(ctx, serverIds), 0);
   }
-  await send(
-    ctx,
-    chatId,
-    `${ctx.cat.msg.chooseEmbySettings}\n\n${formatServerLines(ctx.cat, servers)}`,
-    serverChoiceKeyboard(ctx.cat, servers),
-  );
-  return { type: "settings_library_server" };
+  return renderServerPick(ctx, chatId, "settings_library_server", servers, []);
 }
 
-async function handleSettingsLibraryServer(text: string, ctx: Req, chatId: number): Promise<Screen> {
+async function handleSettingsLibraryServer(
+  screen: Extract<Screen, { type: "settings_library_server" }>,
+  text: string,
+  ctx: Req,
+  chatId: number,
+): Promise<Screen> {
   const servers = await embyServers(ctx);
-  const server = await chosenServer(text, ctx, chatId, servers, ctx.cat.msg.pickEmbyVerified);
-  if (!server) return { type: "settings_library_server" };
-  return renderSettingsLibraryPick(ctx, chatId, server.id, await selectedLibraryIds(ctx, server.id), 0);
+  return handleServerPick(screen, text, ctx, chatId, servers, ctx.cat.msg.pickEmbyVerified, async (chosen) => {
+    const serverIds = chosen.map((server) => server.id).sort((a, b) => a - b);
+    return renderSettingsLibraryPick(ctx, chatId, serverIds, await selectedLibraryIds(ctx, serverIds), 0);
+  });
 }
 
-async function selectedLibraryIds(ctx: Req, serverId: number): Promise<number[]> {
+async function selectedLibraryIds(ctx: Req, serverIds: number[]): Promise<number[]> {
   const settings = await loadQuickSettings(ctx.sessions);
   if (settings.libraries === null) return [];
-  const enabled = await enabledLibraries(ctx, [serverId]);
+  const enabled = await enabledLibraries(ctx, serverIds);
   return matchLibraries(enabled, settings.libraries).selected.map((library) => library.id);
 }
 
 async function renderSettingsLibraryPick(
   ctx: Req,
   chatId: number,
-  serverId: number,
+  serverIds: number[],
   selectedIds: number[],
   page: number,
   notice?: string,
 ): Promise<Screen> {
   const B = ctx.cat.buttons;
-  const libraries = await enabledLibraries(ctx, [serverId]);
+  const libraries = await enabledLibraries(ctx, serverIds);
   const view = pageWindow(libraries, page, PAGE.libraries);
   const rows = choiceRows(
     ctx.cat,
@@ -715,7 +716,7 @@ async function renderSettingsLibraryPick(
   );
   const body = formatLibraryChoices(ctx.cat, view, selectedIds);
   await send(ctx, chatId, notice ? `${notice}\n\n${body}` : body, markup(rows, ctx.cat.ph.choosePresetLibrary));
-  return { type: "settings_library_pick", serverId, selectedIds, page: view.page };
+  return { type: "settings_library_pick", serverIds, selectedIds, page: view.page };
 }
 
 async function handleSettingsLibraryPick(
@@ -725,9 +726,9 @@ async function handleSettingsLibraryPick(
   chatId: number,
 ): Promise<Screen> {
   const B = ctx.cat.buttons;
-  const { serverId, selectedIds } = screen;
+  const { serverIds, selectedIds } = screen;
   if (text === B.prev || text === B.next) {
-    return renderSettingsLibraryPick(ctx, chatId, serverId, selectedIds, shiftPage(B, screen.page, text));
+    return renderSettingsLibraryPick(ctx, chatId, serverIds, selectedIds, shiftPage(B, screen.page, text));
   }
   if (text === B.allLibraries) {
     const settings = await loadQuickSettings(ctx.sessions);
@@ -736,9 +737,9 @@ async function handleSettingsLibraryPick(
   }
   if (text === B.librariesDone) {
     if (!selectedIds.length) {
-      return renderSettingsLibraryPick(ctx, chatId, serverId, selectedIds, screen.page, ctx.cat.msg.pickOneLibrary);
+      return renderSettingsLibraryPick(ctx, chatId, serverIds, selectedIds, screen.page, ctx.cat.msg.pickOneLibrary);
     }
-    const enabled = await enabledLibraries(ctx, [serverId]);
+    const enabled = await enabledLibraries(ctx, serverIds);
     const libraries: QuickLibraryMatcher[] = selectedIds.map((id) => {
       const library = enabled.find((item) => item.id === id);
       return { name: library?.name ?? ctx.cat.msg.libraryFallbackName(id), externalId: library?.externalId ?? null };
@@ -748,15 +749,15 @@ async function handleSettingsLibraryPick(
     return showSettings(ctx, chatId, ctx.cat.msg.librariesSaved);
   }
   const libraryId = parseLibraryButton(ctx.cat, text);
-  const enabled = await enabledLibraries(ctx, [serverId]);
+  const enabled = await enabledLibraries(ctx, serverIds);
   const library = libraryId == null ? undefined : enabled.find((item) => item.id === libraryId);
   if (!library) {
-    return renderSettingsLibraryPick(ctx, chatId, serverId, selectedIds, screen.page, ctx.cat.msg.pickOneLibrary);
+    return renderSettingsLibraryPick(ctx, chatId, serverIds, selectedIds, screen.page, ctx.cat.msg.pickOneLibrary);
   }
   const next = selectedIds.includes(library.id)
     ? selectedIds.filter((id) => id !== library.id)
     : [...selectedIds, library.id].sort((a, b) => a - b);
-  return renderSettingsLibraryPick(ctx, chatId, serverId, next, screen.page);
+  return renderSettingsLibraryPick(ctx, chatId, serverIds, next, screen.page);
 }
 
 async function beginCreateInvite(ctx: Req, chatId: number): Promise<Screen> {
@@ -1094,30 +1095,11 @@ function toInvitationInput(draft: InviteDraft): CreateInvitationInput | null {
   };
 }
 
-async function chosenServer(
-  text: string,
-  ctx: Req,
-  chatId: number,
-  servers: ServerInfo[],
-  miss: string,
-): Promise<ServerInfo | undefined> {
-  const serverId = parseServerButton(ctx.cat, text);
-  const server = serverId == null ? undefined : servers.find((item) => item.id === serverId);
-  if (server) return server;
-  await send(
-    ctx,
-    chatId,
-    `${miss}\n\n${formatServerLines(ctx.cat, servers)}`,
-    serverChoiceKeyboard(ctx.cat, servers),
-  );
-  return undefined;
-}
-
 /** 多選伺服器的訊息 + 鍵盤（✅ 切換、選好了送出）。 */
 async function renderServerPick(
   ctx: Req,
   chatId: number,
-  type: "invite_server" | "quick_invite_server",
+  type: "invite_server" | "quick_invite_server" | "settings_library_server",
   servers: ServerInfo[],
   selectedIds: number[],
   notice?: string,
@@ -1125,7 +1107,9 @@ async function renderServerPick(
   const base =
     type === "quick_invite_server"
       ? `${ctx.cat.msg.chooseEmbyQuick}\n\n${formatServerLines(ctx.cat, servers)}`
-      : formatServerChoices(ctx.cat, servers);
+      : type === "settings_library_server"
+        ? `${ctx.cat.msg.chooseEmbySettings}\n\n${formatServerLines(ctx.cat, servers)}`
+        : formatServerChoices(ctx.cat, servers);
   await send(ctx, chatId, notice ? `${notice}\n\n${base}` : base, serverMultiKeyboard(ctx.cat, servers, selectedIds));
   return { type, selectedIds };
 }
@@ -1142,9 +1126,9 @@ function serverMultiKeyboard(cat: Catalog, servers: ServerInfo[], selectedIds: n
   );
 }
 
-/** 兩種邀請流程共用的多選伺服器處理：切換勾選，按「選好了」交給 done 繼續。 */
+/** 三種流程共用的多選伺服器處理：切換勾選，按「選好了」交給 done 繼續。 */
 async function handleServerPick(
-  screen: { type: "invite_server" | "quick_invite_server"; selectedIds: number[] },
+  screen: { type: "invite_server" | "quick_invite_server" | "settings_library_server"; selectedIds: number[] },
   text: string,
   ctx: Req,
   chatId: number,
@@ -1232,10 +1216,6 @@ function durationKeyboard(cat: Catalog): ReplyMarkup {
 function libraryModeKeyboard(cat: Catalog): ReplyMarkup {
   const B = cat.buttons;
   return markup(withCancel(cat, [B.allLibraries], [B.pickLibraries]), cat.ph.libraryMode);
-}
-
-function serverChoiceKeyboard(cat: Catalog, servers: ServerInfo[]): ReplyMarkup {
-  return markup(choiceRows(cat, servers.map((server) => serverButton(cat, server.id))), cat.ph.chooseServer);
 }
 
 function pickKeyboard(cat: Catalog, view: { page: number; pages: number; items: UserInfo[] }): ReplyMarkup {

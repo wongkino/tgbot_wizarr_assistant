@@ -47,11 +47,11 @@ export function isScreen(value: unknown): value is Screen {
     case "settings":
     case "settings_expiry":
     case "settings_duration":
-    case "settings_library_server":
     case "settings_lang":
       return true;
     case "invite_server":
     case "quick_invite_server":
+    case "settings_library_server":
       return Array.isArray(record.selectedIds) && (record.selectedIds as unknown[]).every(isNumber);
     case "user_list":
     case "library_list":
@@ -74,7 +74,7 @@ export function isScreen(value: unknown): value is Screen {
     case "settings_permissions":
       return isPermissionFlags(record.permissions);
     case "settings_library_pick":
-      return isNumber(record.serverId) && Array.isArray(record.selectedIds) && isNumber(record.page);
+      return Array.isArray(record.serverIds) && Array.isArray(record.selectedIds) && isNumber(record.page);
     case "confirm":
       return isPending(record.pending);
     default:
