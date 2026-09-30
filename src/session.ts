@@ -13,6 +13,7 @@ const SCREEN_TYPES = new Set<Screen["type"]>([
   "pick_user",
   "extend_days",
   "invite_server",
+  "quick_invite_server",
   "invite_expiry",
   "invite_duration",
   "invite_library_mode",

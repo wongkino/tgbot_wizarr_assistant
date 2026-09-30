@@ -63,6 +63,31 @@ class Recorder {
   }
 }
 
+function library(id: number, name: string, externalId: string) {
+  return {
+    id,
+    name,
+    externalId,
+    serverId: 1,
+    serverName: "Emby",
+    enabled: true,
+  };
+}
+
+function server(id: number, name: string, serverType: string) {
+  return {
+    id,
+    name,
+    serverType,
+    serverUrl: null,
+    externalUrl: null,
+    verified: true,
+    allowDownloads: false,
+    allowLiveTv: false,
+    allowMobileUploads: false,
+  };
+}
+
 function users(count: number): UserInfo[] {
   return Array.from({ length: count }, (_, index) => ({
     id: index + 1,
@@ -264,6 +289,60 @@ describe("回覆鍵盤", () => {
     await run(userButton(12), ctx);
     await run(B.confirm, ctx);
     assert.deepEqual(wizarr.disabled, [12]);
+  });
+
+  it("快速邀請只用 Emby，並只保留已勾選的媒體庫", async () => {
+    const wizarr = fakeWizarr({
+      async listServers() {
+        return [server(1, "Emby", "emby"), server(2, "Plex", "plex")];
+      },
+      async listLibraries() {
+        return [
+          library(3, "電影", "4"),
+          library(8, "收藏集", "4746"),
+          library(9, "JAV", "620168"),
+          library(10, "選輯", "4756"),
+          library(11, "泡麵番", "190001"),
+          library(12, "動畫-已完結", "611380"),
+        ];
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.quickInvite, ctx);
+    assert.equal(ctx.telegram.buttons().includes(serverButton(2)), false);
+    assert.equal(ctx.telegram.buttons().includes(B.allLibraries), false);
+    assert.ok(ctx.telegram.buttons().includes(libraryButton(3, true)));
+    assert.ok(ctx.telegram.buttons().includes(libraryButton(12, true)));
+    assert.ok(ctx.telegram.buttons().includes(libraryButton(9, false)));
+    assert.ok(ctx.telegram.buttons().includes(libraryButton(11, false)));
+    assert.equal(ctx.telegram.buttons().includes(libraryButton(8, false)), false);
+    assert.match(ctx.telegram.last().text, /電影/);
+    assert.doesNotMatch(ctx.telegram.last().text, /收藏集/);
+    await run(B.librariesDone, ctx);
+    assert.match(ctx.telegram.last().text, /媒體庫：電影、動畫-已完結/);
+    assert.doesNotMatch(ctx.telegram.last().text, /媒體庫：.*JAV/);
+    assert.equal(wizarr.created.length, 0);
+    await run(B.confirm, ctx);
+    assert.deepEqual(wizarr.created, [
+      {
+        serverIds: [1],
+        expiresInDays: 7,
+        duration: "unlimited",
+        unlimited: true,
+        libraryIds: [3, 12],
+        allowDownloads: false,
+        allowLiveTv: false,
+        allowMobileUploads: false,
+      },
+    ]);
+  });
+
+  it("沒有 Emby 時不會建立快速邀請", async () => {
+    const wizarr = fakeWizarr();
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.quickInvite, ctx);
+    assert.match(ctx.telegram.last().text, /沒有已驗證的 Emby/);
+    assert.equal(wizarr.created.length, 0);
   });
 
   it("可逐步建立邀請並限制媒體庫", async () => {

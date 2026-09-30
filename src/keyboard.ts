@@ -25,6 +25,7 @@ export const B = {
   pendingInvites: "⏳ 待使用",
   usedInvites: "✅ 已使用",
   expiredInvites: "⌛ 已過期",
+  quickInvite: "⚡ 快速邀請",
   createInvite: "➕ 建立邀請",
   deleteInvite: "🗑️ 刪除邀請",
   listLibraries: "📋 列出媒體庫",
@@ -90,6 +91,7 @@ export function markup(rows: string[][], placeholder?: string): ReplyMarkup {
 export function mainKeyboard(): ReplyMarkup {
   return markup(
     [
+      [B.quickInvite],
       [B.status, B.users],
       [B.invites, B.libraries],
       [B.servers, B.help],
@@ -113,6 +115,7 @@ export function usersKeyboard(): ReplyMarkup {
 export function invitesKeyboard(): ReplyMarkup {
   return markup(
     [
+      [B.quickInvite],
       [B.listInvites, B.pendingInvites],
       [B.usedInvites, B.expiredInvites],
       [B.createInvite, B.deleteInvite],

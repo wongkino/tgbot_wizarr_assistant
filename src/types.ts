@@ -161,10 +161,11 @@ export type Screen =
   | { type: "pick_user"; action: UserAction; page: number }
   | { type: "extend_days"; userId: number; username: string }
   | { type: "invite_server" }
+  | { type: "quick_invite_server" }
   | { type: "invite_expiry"; draft: InviteDraft }
   | { type: "invite_duration"; draft: InviteDraft }
   | { type: "invite_library_mode"; draft: InviteDraft }
-  | { type: "invite_library_pick"; draft: InviteDraft; page: number }
+  | { type: "invite_library_pick"; draft: InviteDraft; page: number; quick?: boolean }
   | { type: "invite_permissions"; draft: InviteDraft }
   | { type: "delete_invite_pick"; page: number }
   | { type: "confirm"; pending: PendingAction };

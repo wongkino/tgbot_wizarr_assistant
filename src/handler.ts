@@ -136,7 +136,12 @@ async function dispatch(
     return { type: "users" };
   }
   if (text === B.invites) {
-    await send(ctx, chatId, "選擇邀請操作。建立邀請會逐步詢問伺服器、期限、媒體庫與權限。", invitesKeyboard());
+    await send(
+      ctx,
+      chatId,
+      "選擇邀請操作。快速邀請會用 Emby、連結 7 天，並讓你選媒體庫；建立邀請會逐步詢問。",
+      invitesKeyboard(),
+    );
     return { type: "invites" };
   }
   if (text === B.libraries || text === B.listLibraries) return showLibraries(ctx, chatId, 0);
@@ -148,6 +153,7 @@ async function dispatch(
 
   const inviteFilter = inviteFilterOf(text);
   if (inviteFilter) return showInviteList(ctx, chatId, 0, inviteFilter);
+  if (text === B.quickInvite) return beginQuickInvite(ctx, chatId);
   if (text === B.createInvite) return beginCreateInvite(ctx, chatId);
   if (text === B.deleteInvite) return beginDeleteInvite(ctx, chatId, 0);
 
@@ -178,6 +184,8 @@ async function dispatch(
       return handleExtendDays(screen, text, ctx, chatId);
     case "invite_server":
       return handleInviteServer(text, ctx, chatId);
+    case "quick_invite_server":
+      return handleQuickInviteServer(text, ctx, chatId);
     case "invite_expiry":
       return handleInviteExpiry(screen.draft, text, ctx, chatId);
     case "invite_duration":
@@ -338,8 +346,103 @@ async function showInviteList(
   return { type: "invite_list", page: view.page, filter };
 }
 
+const QUICK_INVITE_NOTE =
+  "快速邀請使用預設：連結 7 天、只使用 Emby、帳號無限制，下載、直播與上傳皆關閉。已勾選動畫-已完結、動畫-連載中、電影、電視。JAV 與泡麵番可再選。";
+
+const QUICK_LIBRARY_NAMES = new Set(["JAV", "動畫-已完結", "動畫-連載中", "泡麵番", "電影", "電視"]);
+
+const QUICK_LIBRARY_EXTERNAL_IDS = new Set(["620168", "611380", "598899", "190001", "4761", "4"]);
+
+const QUICK_LIBRARY_DEFAULT_NAMES = new Set(["動畫-已完結", "動畫-連載中", "電影", "電視"]);
+
+const QUICK_LIBRARY_DEFAULT_EXTERNAL_IDS = new Set(["611380", "598899", "4761", "4"]);
+
+async function beginQuickInvite(ctx: AppContext, chatId: number): Promise<Screen> {
+  const servers = await embyServers(ctx);
+  if (!servers.length) {
+    await send(ctx, chatId, "沒有已驗證的 Emby 伺服器，無法建立快速邀請。", invitesKeyboard());
+    return { type: "invites" };
+  }
+  if (servers.length === 1) {
+    const server = servers[0];
+    if (!server) return { type: "invites" };
+    return startQuickLibraries(ctx, chatId, server);
+  }
+  await send(ctx, chatId, `選擇 Emby 伺服器。\n${QUICK_INVITE_NOTE}`, serverChoiceKeyboard(servers));
+  return { type: "quick_invite_server" };
+}
+
+async function handleQuickInviteServer(text: string, ctx: AppContext, chatId: number): Promise<Screen> {
+  const servers = await embyServers(ctx);
+  const serverId = parseServerButton(text);
+  const server = serverId == null ? undefined : servers.find((item) => item.id === serverId);
+  if (!server) {
+    await send(ctx, chatId, "請點選其中一台已驗證的 Emby 伺服器。", serverChoiceKeyboard(servers));
+    return { type: "quick_invite_server" };
+  }
+  return startQuickLibraries(ctx, chatId, server);
+}
+
+async function startQuickLibraries(ctx: AppContext, chatId: number, server: ServerInfo): Promise<Screen> {
+  const libraries = quickInviteLibraries(await enabledLibraries(ctx, server.id));
+  if (!libraries.length) {
+    await send(ctx, chatId, "這台 Emby 沒有符合篩選的媒體庫，無法建立快速邀請。", invitesKeyboard());
+    return { type: "invites" };
+  }
+  const selected = libraries.filter(isQuickInviteDefault).sort((a, b) => a.id - b.id);
+  const draft: InviteDraft = {
+    ...quickDraft(server),
+    libraryIds: selected.map((library) => library.id),
+    libraryNames: selected.map((library) => library.name),
+  };
+  return renderLibraryPick(ctx, chatId, draft, 0, libraries, QUICK_INVITE_NOTE, true);
+}
+
+function isQuickInviteLibrary(library: LibraryInfo): boolean {
+  return QUICK_LIBRARY_NAMES.has(library.name) || (library.externalId != null && QUICK_LIBRARY_EXTERNAL_IDS.has(library.externalId));
+}
+
+function isQuickInviteDefault(library: LibraryInfo): boolean {
+  return (
+    QUICK_LIBRARY_DEFAULT_NAMES.has(library.name) ||
+    (library.externalId != null && QUICK_LIBRARY_DEFAULT_EXTERNAL_IDS.has(library.externalId))
+  );
+}
+
+function quickInviteLibraries(libraries: LibraryInfo[]): LibraryInfo[] {
+  return libraries.filter(isQuickInviteLibrary);
+}
+
+function quickDraft(server: ServerInfo): InviteDraft {
+  return {
+    serverId: server.id,
+    serverName: server.name,
+    expiresInDays: 7,
+    duration: "unlimited",
+    unlimited: true,
+    useAllLibraries: false,
+    libraryIds: [],
+    libraryNames: [],
+    allowDownloads: false,
+    allowLiveTv: false,
+    allowMobileUploads: false,
+  };
+}
+
+function isEmby(server: ServerInfo): boolean {
+  return server.serverType.trim().toLowerCase() === "emby";
+}
+
+async function embyServers(ctx: AppContext): Promise<ServerInfo[]> {
+  return (await verifiedServers(ctx)).filter(isEmby);
+}
+
+async function verifiedServers(ctx: AppContext): Promise<ServerInfo[]> {
+  return (await ctx.wizarr.listServers()).filter((server) => server.verified);
+}
+
 async function beginCreateInvite(ctx: AppContext, chatId: number): Promise<Screen> {
-  const servers = (await ctx.wizarr.listServers()).filter((server) => server.verified);
+  const servers = await verifiedServers(ctx);
   if (!servers.length) {
     await send(ctx, chatId, "沒有已驗證的伺服器，無法建立邀請。", invitesKeyboard());
     return { type: "invites" };
@@ -349,7 +452,7 @@ async function beginCreateInvite(ctx: AppContext, chatId: number): Promise<Scree
 }
 
 async function handleInviteServer(text: string, ctx: AppContext, chatId: number): Promise<Screen> {
-  const servers = (await ctx.wizarr.listServers()).filter((server) => server.verified);
+  const servers = await verifiedServers(ctx);
   const serverId = parseServerButton(text);
   const server = serverId == null ? undefined : servers.find((item) => item.id === serverId);
   if (!server) {
@@ -414,11 +517,16 @@ async function handleLibraryPick(
   ctx: AppContext,
   chatId: number,
 ): Promise<Screen> {
-  const libraries = await enabledLibraries(ctx, screen.draft.serverId);
+  const available = await enabledLibraries(ctx, screen.draft.serverId);
+  const quick = screen.quick === true;
+  const libraries = quick ? quickInviteLibraries(available) : available;
   if (text === B.prev || text === B.next) {
-    return renderLibraryPick(ctx, chatId, screen.draft, shiftPage(screen.page, text), libraries);
+    return renderLibraryPick(ctx, chatId, screen.draft, shiftPage(screen.page, text), libraries, undefined, quick);
   }
   if (text === B.allLibraries) {
+    if (quick) {
+      return renderLibraryPick(ctx, chatId, screen.draft, screen.page, libraries, "快速邀請不能改用全部媒體庫。", true);
+    }
     return showPermissions(ctx, chatId, { ...screen.draft, useAllLibraries: true, libraryIds: [], libraryNames: [] });
   }
   if (text === B.librariesDone) {
@@ -429,16 +537,26 @@ async function handleLibraryPick(
         screen.draft,
         screen.page,
         libraries,
-        "請至少選一個媒體庫，或改用全部媒體庫。",
+        quick ? "請至少選一個媒體庫。" : "請至少選一個媒體庫，或改用全部媒體庫。",
+        quick,
       );
     }
-    return showPermissions(ctx, chatId, { ...screen.draft, useAllLibraries: false });
+    const next = { ...screen.draft, useAllLibraries: false };
+    return quick ? askCreateConfirm(ctx, chatId, next, QUICK_INVITE_NOTE) : showPermissions(ctx, chatId, next);
   }
 
   const libraryId = parseLibraryButton(text);
   const library = libraryId == null ? undefined : libraries.find((item) => item.id === libraryId);
   if (!library) {
-    return renderLibraryPick(ctx, chatId, screen.draft, screen.page, libraries, "請點選媒體庫、選好了，或改用全部媒體庫。");
+    return renderLibraryPick(
+      ctx,
+      chatId,
+      screen.draft,
+      screen.page,
+      libraries,
+      quick ? "請點選媒體庫，或按媒體庫選好了。" : "請點選媒體庫、選好了，或改用全部媒體庫。",
+      quick,
+    );
   }
 
   const selected = new Map(screen.draft.libraryIds.map((id, index) => [id, screen.draft.libraryNames[index] ?? library.name]));
@@ -451,7 +569,7 @@ async function handleLibraryPick(
     libraryIds,
     libraryNames: libraryIds.map((id) => selected.get(id) ?? ""),
   };
-  return renderLibraryPick(ctx, chatId, next, screen.page, libraries);
+  return renderLibraryPick(ctx, chatId, next, screen.page, libraries, undefined, quick);
 }
 
 async function renderLibraryPick(
@@ -461,15 +579,16 @@ async function renderLibraryPick(
   page: number,
   libraries: LibraryInfo[],
   notice?: string,
+  quick = false,
 ): Promise<Screen> {
   const view = pageWindow(libraries, page, PAGE.libraries);
   const rows = view.items.map((library) => [libraryButton(library.id, draft.libraryIds.includes(library.id))]);
   appendNav(rows, view.page, view.pages);
-  rows.push([B.librariesDone, B.allLibraries]);
+  rows.push(quick ? [B.librariesDone] : [B.librariesDone, B.allLibraries]);
   rows.push([B.cancel, B.home]);
   const body = formatLibraryChoices(view, draft.libraryIds);
   await send(ctx, chatId, notice ? `${notice}\n\n${body}` : body, markup(rows, "選擇媒體庫"));
-  return { type: "invite_library_pick", draft, page: view.page };
+  return { type: "invite_library_pick", draft, page: view.page, quick };
 }
 
 async function handlePermissions(draft: InviteDraft, text: string, ctx: AppContext, chatId: number): Promise<Screen> {
@@ -492,13 +611,19 @@ async function showPermissions(ctx: AppContext, chatId: number, draft: InviteDra
   return { type: "invite_permissions", draft };
 }
 
-async function askCreateConfirm(ctx: AppContext, chatId: number, draft: InviteDraft): Promise<Screen> {
+async function askCreateConfirm(
+  ctx: AppContext,
+  chatId: number,
+  draft: InviteDraft,
+  note?: string,
+): Promise<Screen> {
   const input = toInvitationInput(draft);
   if (!input) {
     await send(ctx, chatId, "邀請資料不完整，請重新建立。", invitesKeyboard());
     return { type: "invites" };
   }
-  await send(ctx, chatId, formatInviteSummary(draft), confirmKeyboard());
+  const summary = formatInviteSummary(draft);
+  await send(ctx, chatId, note ? `${note}\n\n${summary}` : summary, confirmKeyboard());
   return { type: "confirm", pending: { kind: "create_invite", input, serverName: draft.serverName ?? "" } };
 }
 
@@ -700,6 +825,7 @@ function parentOf(screen: Screen): Screen {
     case "invites":
     case "invite_list":
     case "invite_server":
+    case "quick_invite_server":
     case "invite_expiry":
     case "invite_duration":
     case "invite_library_mode":
