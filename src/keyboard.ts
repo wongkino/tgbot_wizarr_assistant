@@ -131,11 +131,11 @@ export function userButton(cat: Catalog, id: number): string {
 }
 
 export function serverButton(cat: Catalog, id: number, selected = false): string {
-  return `${selected ? "✅ " : ""}${labeledButton(cat.labels.server, id)}`;
+  return toggleButton(cat.labels.server, id, selected);
 }
 
 export function libraryButton(cat: Catalog, id: number, selected: boolean): string {
-  return `${selected ? "✅ " : ""}${labeledButton(cat.labels.library, id)}`;
+  return toggleButton(cat.labels.library, id, selected);
 }
 
 export function deleteInviteButton(cat: Catalog, id: number): string {
@@ -147,11 +147,11 @@ export function parseUserButton(cat: Catalog, text: string): number | null {
 }
 
 export function parseServerButton(cat: Catalog, text: string): number | null {
-  return parseId(text, new RegExp(`^(?:✅ )?${escapeRegExp(cat.labels.server)} #(\\d+)$`));
+  return parseToggleButton(cat.labels.server, text);
 }
 
 export function parseLibraryButton(cat: Catalog, text: string): number | null {
-  return parseId(text, new RegExp(`^(?:✅ )?${escapeRegExp(cat.labels.library)} #(\\d+)$`));
+  return parseToggleButton(cat.labels.library, text);
 }
 
 export function parseDeleteInviteButton(cat: Catalog, text: string): number | null {
@@ -162,8 +162,16 @@ function labeledButton(label: string, id: number): string {
   return `${label} #${id}`;
 }
 
+function toggleButton(label: string, id: number, selected: boolean): string {
+  return `${selected ? "✅ " : ""}${labeledButton(label, id)}`;
+}
+
 function parseLabeledId(label: string, text: string): number | null {
   return parseId(text, new RegExp(`^${escapeRegExp(label)} #(\\d+)$`));
+}
+
+function parseToggleButton(label: string, text: string): number | null {
+  return parseId(text, new RegExp(`^(?:✅ )?${escapeRegExp(label)} #(\\d+)$`));
 }
 
 function escapeRegExp(value: string): string {

@@ -690,6 +690,50 @@ describe("回覆鍵盤", () => {
     assert.match(ctx.telegram.last().text, /CODE2/);
   });
 
+  it("帳號期限有限時也會沿用相同設定的快速邀請", async () => {
+    const invites: Awaited<ReturnType<WizarrApi["listInvitations"]>> = [];
+    const created: CreateInvitationInput[] = [];
+    const wizarr = fakeWizarr({
+      async listServers() {
+        return [server(1, "Emby", "emby")];
+      },
+      async listLibraries() {
+        return quickLibraryFixtures();
+      },
+      async listInvitations() {
+        return invites;
+      },
+      async createInvitation(input) {
+        created.push(input);
+        const invite = {
+          id: 9 + created.length,
+          code: `CODE${created.length}`,
+          url: `https://wizarr.example/j/CODE${created.length}`,
+          status: "pending",
+          created: null,
+          expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          usedAt: null,
+          usedBy: null,
+          duration: input.duration,
+          unlimited: input.unlimited,
+          libraryIds: input.libraryIds,
+          serverNames: ["Emby"],
+        };
+        invites.push(invite);
+        return invite;
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await saveQuickSettings(ctx.sessions, { ...defaultQuickSettings(), duration: "30", unlimited: false });
+    await run(B.quickInvite, ctx);
+    assert.equal(created.length, 1);
+    assert.equal(created[0]?.unlimited, false);
+    // 再按一次：設定相同、代碼未過期，應沿用而非新建（unlimited=false 不影響沿用）
+    await run(B.quickInvite, ctx);
+    assert.equal(created.length, 1);
+    assert.match(ctx.telegram.last().text, /沿用這組代碼/);
+  });
+
   it("可逐步建立邀請並限制媒體庫", async () => {
     const wizarr = fakeWizarr();
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };

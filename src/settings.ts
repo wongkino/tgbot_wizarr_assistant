@@ -82,8 +82,7 @@ export function sameQuickSettings(a: QuickInviteSettings, b: QuickInviteSettings
 function sameMatchers(a: QuickLibraryMatcher[] | null, b: QuickLibraryMatcher[] | null): boolean {
   if (a === null || b === null) return a === b;
   if (a.length !== b.length) return false;
-  const keys = (list: QuickLibraryMatcher[]) => list.map((item) => `${item.name} ${item.externalId ?? ""}`).sort();
-  const left = keys(a);
+  const keys = (list: QuickLibraryMatcher[]) => list.map((item) => `${item.name}\0${item.externalId ?? ""}`).sort();  const left = keys(a);
   const right = keys(b);
   return left.every((key, index) => key === right[index]);
 }
