@@ -79,6 +79,13 @@ export function userActionOf(text: string): UserAction | undefined {
   return USER_ACTIONS[text as keyof typeof USER_ACTIONS];
 }
 
+export function navRow(page: number, pages: number): string[] {
+  const nav: string[] = [];
+  if (page > 0) nav.push(B.prev);
+  if (page < pages - 1) nav.push(B.next);
+  return nav;
+}
+
 export function markup(rows: string[][], placeholder?: string): ReplyMarkup {
   return {
     keyboard: rows.map((row) => row.map((text) => ({ text }))),
@@ -137,45 +144,39 @@ export function confirmKeyboard(): ReplyMarkup {
   return markup([[B.confirm, B.cancel], [B.home]], "確認或取消");
 }
 
-export function cancelKeyboard(): ReplyMarkup {
-  return markup([[B.cancel, B.home]], "可取消");
-}
-
 export function removeKeyboard(): ReplyMarkup {
   return { remove_keyboard: true };
 }
 
 export function withNav(base: ReplyMarkup, page: number, pages: number): ReplyMarkup {
   if (!("keyboard" in base)) return base;
-  const nav: string[] = [];
-  if (page > 0) nav.push(B.prev);
-  if (page < pages - 1) nav.push(B.next);
+  const nav = navRow(page, pages);
   const rows = base.keyboard.map((row) => row.map((button) => button.text));
   return markup(nav.length ? [nav, ...rows] : rows, base.input_field_placeholder);
 }
 
 export function userButton(id: number): string {
-  return `使用者 #${id}`;
+  return labeledButton("使用者", id);
 }
 
 export function serverButton(id: number): string {
-  return `伺服器 #${id}`;
+  return labeledButton("伺服器", id);
 }
 
 export function libraryButton(id: number, selected: boolean): string {
-  return selected ? `✅ 媒體庫 #${id}` : `媒體庫 #${id}`;
+  return `${selected ? "✅ " : ""}${labeledButton("媒體庫", id)}`;
 }
 
 export function deleteInviteButton(id: number): string {
-  return `刪除邀請 #${id}`;
+  return labeledButton("刪除邀請", id);
 }
 
 export function parseUserButton(text: string): number | null {
-  return parseId(text, /^使用者 #(\d+)$/);
+  return parseLabeledId("使用者", text);
 }
 
 export function parseServerButton(text: string): number | null {
-  return parseId(text, /^伺服器 #(\d+)$/);
+  return parseLabeledId("伺服器", text);
 }
 
 export function parseLibraryButton(text: string): number | null {
@@ -183,7 +184,15 @@ export function parseLibraryButton(text: string): number | null {
 }
 
 export function parseDeleteInviteButton(text: string): number | null {
-  return parseId(text, /^刪除邀請 #(\d+)$/);
+  return parseLabeledId("刪除邀請", text);
+}
+
+function labeledButton(label: string, id: number): string {
+  return `${label} #${id}`;
+}
+
+function parseLabeledId(label: string, text: string): number | null {
+  return parseId(text, new RegExp(`^${label} #(\\d+)$`));
 }
 
 export function permissionKeyboard(draft: InviteDraft): ReplyMarkup {

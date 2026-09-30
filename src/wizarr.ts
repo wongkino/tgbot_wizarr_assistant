@@ -184,7 +184,8 @@ function parseInvitation(data: unknown, publicBase: string): InvitationInfo {
     usedAt: stringOf(record.used_at),
     usedBy: stringOf(record.used_by),
     duration: stringOf(record.duration) ?? "unlimited",
-    unlimited: record.unlimited === true || stringOf(record.duration) === "unlimited",
+    unlimited: typeof record.unlimited === "boolean" ? record.unlimited : stringOf(record.duration) === "unlimited",
+    libraryIds: numberList(record.specific_libraries),
     serverNames: asArray(record.server_names).map((name) => stringOf(name) ?? "").filter(Boolean),
   };
 }
@@ -257,4 +258,8 @@ function stringOf(value: unknown): string | null {
 
 function numberOf(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : Number(value) || 0;
+}
+
+function numberList(value: unknown): number[] {
+  return asArray(value).map(numberOf).filter((id) => id > 0);
 }

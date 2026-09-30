@@ -25,6 +25,7 @@ export interface InvitationInfo {
   usedBy: string | null;
   duration: string;
   unlimited: boolean;
+  libraryIds: number[];
   serverNames: string[];
 }
 
@@ -99,6 +100,7 @@ export type ReplyMarkup =
 
 export interface TelegramApi {
   sendMessage(chatId: number, text: string, markup?: ReplyMarkup): Promise<void>;
+  sendPhoto(chatId: number, image: Uint8Array, caption?: string): Promise<void>;
   getUpdates(offset: number, signal?: AbortSignal): Promise<Update[]>;
   deleteWebhook(): Promise<void>;
 }
@@ -165,7 +167,7 @@ export type Screen =
   | { type: "invite_expiry"; draft: InviteDraft }
   | { type: "invite_duration"; draft: InviteDraft }
   | { type: "invite_library_mode"; draft: InviteDraft }
-  | { type: "invite_library_pick"; draft: InviteDraft; page: number; quick?: boolean }
+  | { type: "invite_library_pick"; draft: InviteDraft; page: number }
   | { type: "invite_permissions"; draft: InviteDraft }
   | { type: "delete_invite_pick"; page: number }
   | { type: "confirm"; pending: PendingAction };
@@ -174,6 +176,8 @@ export interface SessionStore {
   get(key: string): Promise<Screen | null>;
   set(key: string, value: Screen, ttlSeconds: number): Promise<void>;
   delete(key: string): Promise<void>;
+  getText(key: string): Promise<string | null>;
+  setText(key: string, value: string, ttlSeconds: number): Promise<void>;
 }
 
 export interface AppConfig {

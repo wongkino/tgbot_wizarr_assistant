@@ -40,7 +40,14 @@ describe("createWizarrClient", () => {
         return new Response(
           JSON.stringify({
             message: "ok",
-            invitation: { id: 9, code: "ABCD", url: "/j/ABCD", status: "pending", unlimited: true },
+            invitation: {
+              id: 9,
+              code: "ABCD",
+              url: "/j/ABCD",
+              status: "pending",
+              unlimited: true,
+              specific_libraries: [3, 12],
+            },
           }),
           { status: 201 },
         );
@@ -59,6 +66,8 @@ describe("createWizarrClient", () => {
     });
 
     assert.equal(invitation.url, "https://invite.example/j/ABCD");
+    assert.equal(invitation.unlimited, true);
+    assert.deepEqual(invitation.libraryIds, [3, 12]);
     assert.equal(calls[0]?.url, "https://wizarr.example/api/invitations");
     const headers = new Headers(calls[0]?.init?.headers);
     assert.equal(headers.get("X-API-Key"), "secret-key");
@@ -73,6 +82,32 @@ describe("createWizarrClient", () => {
       allow_live_tv: false,
       allow_mobile_uploads: false,
     });
+  });
+
+  it("帳號是否無限制以 unlimited 欄位為準", async () => {
+    const client = createWizarrClient({
+      apiBase: "https://wizarr.example/api",
+      apiKey: "k",
+      publicBase: "https://wizarr.example",
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            invitation: { id: 1, code: "LIMIT", url: "/j/LIMIT", unlimited: false, duration: "unlimited" },
+          }),
+          { status: 201 },
+        ),
+    });
+    const invitation = await client.createInvitation({
+      serverIds: [1],
+      expiresInDays: 7,
+      duration: "30",
+      unlimited: false,
+      libraryIds: [],
+      allowDownloads: false,
+      allowLiveTv: false,
+      allowMobileUploads: false,
+    });
+    assert.equal(invitation.unlimited, false);
   });
 
   it("把 Wizarr 錯誤訊息傳回", async () => {

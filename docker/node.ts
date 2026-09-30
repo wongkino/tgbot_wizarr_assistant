@@ -78,8 +78,8 @@ async function poll(): Promise<void> {
     try {
       const updates = await app.telegram.getUpdates(offset, pollAbort.signal);
       for (const update of updates) {
-        offset = update.update_id + 1;
         await app.handle(update);
+        offset = update.update_id + 1;
       }
     } catch (error) {
       if (stopping || pollAbort.signal.aborted) break;

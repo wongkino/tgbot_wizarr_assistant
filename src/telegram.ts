@@ -14,10 +14,13 @@ export function createTelegramClient(token: string, fetchImpl: typeof fetch = fe
       });
     } catch (error) {
       if (signal?.aborted) throw error;
-      const reason = error instanceof Error ? error.message : "連線失敗";
-      throw new Error(`Telegram ${method} 失敗：${reason}`);
+      throw telegramError(method, error);
     }
 
+    return readResult(response, method);
+  }
+
+  async function readResult(response: Response, method: string): Promise<unknown> {
     const data = (await response.json()) as { ok?: boolean; description?: string; result?: unknown };
     if (!response.ok || data.ok === false) {
       throw new Error(data.description || `Telegram ${method} HTTP ${response.status}`);
@@ -39,6 +42,25 @@ export function createTelegramClient(token: string, fetchImpl: typeof fetch = fe
         });
       }
     },
+    async sendPhoto(chatId, image, caption) {
+      const form = new FormData();
+      form.set("chat_id", String(chatId));
+      form.set("photo", new File([new Uint8Array(image)], "invite-qr.png", { type: "image/png" }));
+      if (caption) {
+        form.set("caption", caption);
+        form.set("parse_mode", "HTML");
+      }
+      let response: Response;
+      try {
+        response = await fetchImpl(`https://api.telegram.org/bot${token}/sendPhoto`, {
+          method: "POST",
+          body: form,
+        });
+      } catch (error) {
+        throw telegramError("sendPhoto", error);
+      }
+      await readResult(response, "sendPhoto");
+    },
     async getUpdates(offset, signal) {
       const result = await call(
         "getUpdates",
@@ -55,6 +77,11 @@ export function createTelegramClient(token: string, fetchImpl: typeof fetch = fe
       await call("deleteWebhook", { drop_pending_updates: false });
     },
   };
+}
+
+function telegramError(method: string, error: unknown): Error {
+  const reason = error instanceof Error ? error.message : "連線失敗";
+  return new Error(`Telegram ${method} 失敗：${reason}`);
 }
 
 export function splitText(text: string): string[] {

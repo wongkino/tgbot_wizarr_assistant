@@ -66,7 +66,7 @@ export function welcomeText(): string {
     "<b>Wizarr 助理</b>",
     "用底部的回覆鍵盤管理邀請、使用者、媒體庫與伺服器。",
     "",
-    `${B.quickInvite} 用預設值建立邀請`,
+    `${B.quickInvite} 直接建立邀請`,
     `${B.status} 查看統計`,
     `${B.users} 管理使用者`,
     `${B.invites} 建立或刪除邀請`,
@@ -77,7 +77,15 @@ export function welcomeText(): string {
   ].join("\n");
 }
 
+export const QUICK_LIBRARIES = [
+  { name: "動畫-已完結", externalId: "611380" },
+  { name: "動畫-連載中", externalId: "598899" },
+  { name: "電影", externalId: "4" },
+  { name: "電視", externalId: "4761" },
+] as const;
+
 export function helpText(): string {
+  const libraries = QUICK_LIBRARIES.map((library) => library.name).join("、");
   return [
     "<b>使用說明</b>",
     "所有功能都從底部回覆鍵盤進入。",
@@ -87,10 +95,10 @@ export function helpText(): string {
     "停用時若媒體伺服器不支援，Wizarr 會改為刪除該帳號。",
     "",
     "<b>邀請</b>",
-    "可依狀態列出、用快速邀請套用預設、逐步建立邀請，或刪除尚未使用的邀請連結。",
-    "快速邀請為：連結 7 天、只使用 Emby、帳號無限制，下載、直播與上傳皆關閉。",
-    "媒體庫只提供 JAV、動畫-已完結、動畫-連載中、泡麵番、電影、電視，不含收藏集與選輯。",
-    "預設勾選動畫-已完結、動畫-連載中、電影、電視。JAV 與泡麵番可再選。",
+    "可依狀態列出、用快速邀請直接建立，或逐步建立邀請，也可以刪除尚未使用的邀請連結。",
+    "列出或建立邀請時，會同時送出邀請網址的 QR code。",
+    "快速邀請會立即建立：連結 7 天、只使用 Emby、帳號無限制，下載、直播與上傳皆關閉。",
+    `媒體庫固定為${libraries}。`,
     "刪除邀請不會移除已經建立的媒體帳號。",
     "",
     "<b>媒體庫 / 伺服器</b>",
@@ -116,76 +124,67 @@ export function formatStatus(status: StatusInfo): string {
   ].join("\n");
 }
 
-export function formatUserList(view: PageView<UserInfo>): string {
-  if (view.total === 0) return "目前沒有使用者。";
-  const lines = [
-    `<b>使用者</b>（第 ${view.page + 1}/${view.pages} 頁，共 ${view.total} 人）`,
-    "",
-  ];
-  for (const user of view.items) {
-    lines.push(
-      `<b>#${user.id}</b> ${esc(user.username)}`,
-      `${esc(user.server)}（${esc(user.serverType)}）· ${user.email ? esc(user.email) : "沒有電郵"}`,
-      `到期：${formatDate(user.expires)}`,
-      "",
-    );
-  }
+function formatPaged<T>(
+  view: PageView<T>,
+  title: string,
+  unit: string,
+  empty: string,
+  linesFor: (item: T) => string[],
+): string {
+  if (view.total === 0) return empty;
+  const lines = [`<b>${title}</b>（第 ${view.page + 1}/${view.pages} 頁，共 ${view.total} ${unit}）`, ""];
+  for (const item of view.items) lines.push(...linesFor(item), "");
   return lines.join("\n").trimEnd();
+}
+
+function permissionLines(permissions: {
+  allowDownloads: boolean;
+  allowLiveTv: boolean;
+  allowMobileUploads: boolean;
+}): string[] {
+  return [
+    `下載：${yn(permissions.allowDownloads)}`,
+    `直播：${yn(permissions.allowLiveTv)}`,
+    `手機上傳：${yn(permissions.allowMobileUploads)}`,
+  ];
+}
+
+export function formatUserList(view: PageView<UserInfo>): string {
+  return formatPaged(view, "使用者", "人", "目前沒有使用者。", (user) => [
+    `<b>#${user.id}</b> ${esc(user.username)}`,
+    `${esc(user.server)}（${esc(user.serverType)}）· ${user.email ? esc(user.email) : "沒有電郵"}`,
+    `到期：${formatDate(user.expires)}`,
+  ]);
 }
 
 export function formatInviteList(view: PageView<InvitationInfo>, filter: InviteFilter): string {
   const title = filterLabel(filter);
-  if (view.total === 0) return `目前沒有${title}。`;
-  const lines = [
-    `<b>${title}</b>（第 ${view.page + 1}/${view.pages} 頁，共 ${view.total} 個）`,
-    "",
-  ];
-  for (const invite of view.items) {
+  return formatPaged(view, title, "個", `目前沒有${title}。`, (invite) => {
     const servers = invite.serverNames.length ? invite.serverNames.map(esc).join("、") : "未指定";
-    lines.push(
+    return [
       `<b>#${invite.id}</b> <code>${esc(invite.code)}</code> · ${esc(statusLabel(invite.status))}`,
       `伺服器：${servers}`,
       `連結到期：${formatDate(invite.expires)} · 帳號：${esc(durationLabel(invite.duration, invite.unlimited))}`,
       link(invite.url),
-      "",
-    );
-  }
-  return lines.join("\n").trimEnd();
+    ];
+  });
 }
 
 export function formatLibraries(view: PageView<LibraryInfo>): string {
-  if (view.total === 0) return "目前沒有媒體庫。";
-  const lines = [
-    `<b>媒體庫</b>（第 ${view.page + 1}/${view.pages} 頁，共 ${view.total} 個）`,
-    "",
-  ];
-  for (const library of view.items) {
-    lines.push(
-      `<b>#${library.id}</b> ${esc(library.name)} · ${library.enabled ? "已啟用" : "已停用"}`,
-      `${esc(library.serverName)}${library.externalId ? ` · ${esc(library.externalId)}` : ""}`,
-      "",
-    );
-  }
-  return lines.join("\n").trimEnd();
+  return formatPaged(view, "媒體庫", "個", "目前沒有媒體庫。", (library) => [
+    `<b>#${library.id}</b> ${esc(library.name)} · ${library.enabled ? "已啟用" : "已停用"}`,
+    `${esc(library.serverName)}${library.externalId ? ` · ${esc(library.externalId)}` : ""}`,
+  ]);
 }
 
 export function formatServers(view: PageView<ServerInfo>): string {
-  if (view.total === 0) return "目前沒有媒體伺服器。";
-  const lines = [
-    `<b>伺服器</b>（第 ${view.page + 1}/${view.pages} 頁，共 ${view.total} 台）`,
-    "",
-  ];
-  for (const server of view.items) {
-    lines.push(
-      `<b>#${server.id}</b> ${esc(server.name)}（${esc(server.serverType)}）`,
-      server.verified ? "已驗證" : "未驗證",
-      server.serverUrl ? `內部：${esc(server.serverUrl)}` : "內部網址：沒有",
-      server.externalUrl ? `外部：${esc(server.externalUrl)}` : "外部網址：沒有",
-      `下載 ${yn(server.allowDownloads)} · 直播 ${yn(server.allowLiveTv)} · 上傳 ${yn(server.allowMobileUploads)}`,
-      "",
-    );
-  }
-  return lines.join("\n").trimEnd();
+  return formatPaged(view, "伺服器", "台", "目前沒有媒體伺服器。", (server) => [
+    `<b>#${server.id}</b> ${esc(server.name)}（${esc(server.serverType)}）`,
+    server.verified ? "已驗證" : "未驗證",
+    server.serverUrl ? `內部：${esc(server.serverUrl)}` : "內部網址：沒有",
+    server.externalUrl ? `外部：${esc(server.externalUrl)}` : "外部網址：沒有",
+    `下載 ${yn(server.allowDownloads)} · 直播 ${yn(server.allowLiveTv)} · 上傳 ${yn(server.allowMobileUploads)}`,
+  ]);
 }
 
 export function formatServerChoices(servers: ServerInfo[]): string {
@@ -211,14 +210,7 @@ export function formatLibraryChoices(view: PageView<LibraryInfo>, selected: numb
 }
 
 export function formatPermissions(draft: InviteDraft): string {
-  return [
-    "<b>邀請權限</b>",
-    `下載：${yn(draft.allowDownloads)}`,
-    `直播：${yn(draft.allowLiveTv)}`,
-    `手機上傳：${yn(draft.allowMobileUploads)}`,
-    "",
-    "可切換後按下一步。",
-  ].join("\n");
+  return ["<b>邀請權限</b>", ...permissionLines(draft), "", "可切換後按下一步。"].join("\n");
 }
 
 export function formatInviteSummary(draft: InviteDraft): string {
@@ -233,9 +225,7 @@ export function formatInviteSummary(draft: InviteDraft): string {
     `邀請連結：${draft.expiresInDays == null ? "不過期" : `${draft.expiresInDays} 天`}`,
     `帳號期限：${esc(durationLabel(draft.duration ?? "unlimited", draft.unlimited === true))}`,
     `媒體庫：${libraries}`,
-    `下載：${yn(draft.allowDownloads)}`,
-    `直播：${yn(draft.allowLiveTv)}`,
-    `手機上傳：${yn(draft.allowMobileUploads)}`,
+    ...permissionLines(draft),
   ].join("\n");
 }
 

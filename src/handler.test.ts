@@ -39,9 +39,14 @@ function message(text: string, userId = 7, chatType = "private"): Update {
 
 class Recorder {
   readonly messages: { text: string; markup?: ReplyMarkup }[] = [];
+  readonly photos: { image: Uint8Array; caption?: string }[] = [];
 
   async sendMessage(_chatId: number, text: string, markup?: ReplyMarkup): Promise<void> {
     this.messages.push({ text, markup });
+  }
+
+  async sendPhoto(_chatId: number, image: Uint8Array, caption?: string): Promise<void> {
+    this.photos.push({ image, caption });
   }
 
   async getUpdates(): Promise<Update[]> {
@@ -61,6 +66,15 @@ class Recorder {
     if (!markup || !("keyboard" in markup)) return [];
     return markup.keyboard.flat().map((button) => button.text);
   }
+}
+
+function quickLibraryFixtures() {
+  return [
+    library(3, "電影", "4"),
+    library(12, "動畫-已完結", "611380"),
+    library(13, "電視", "4761"),
+    library(14, "動畫-連載中", "598899"),
+  ];
 }
 
 function library(id: number, name: string, externalId: string) {
@@ -146,6 +160,7 @@ function fakeWizarr(overrides: Partial<WizarrApi> = {}): WizarrApi & { created: 
           usedBy: null,
           duration: "unlimited",
           unlimited: true,
+          libraryIds: [],
           serverNames: ["Plex"],
         },
       ];
@@ -163,6 +178,7 @@ function fakeWizarr(overrides: Partial<WizarrApi> = {}): WizarrApi & { created: 
         usedBy: null,
         duration: input.duration,
         unlimited: input.unlimited,
+        libraryIds: input.libraryIds,
         serverNames: ["Plex"],
       };
     },
@@ -291,7 +307,7 @@ describe("回覆鍵盤", () => {
     assert.deepEqual(wizarr.disabled, [12]);
   });
 
-  it("快速邀請只用 Emby，並只保留已勾選的媒體庫", async () => {
+  it("快速邀請直接建立，只用 Emby 與預設媒體庫", async () => {
     const wizarr = fakeWizarr({
       async listServers() {
         return [server(1, "Emby", "emby"), server(2, "Plex", "plex")];
@@ -301,40 +317,124 @@ describe("回覆鍵盤", () => {
           library(3, "電影", "4"),
           library(8, "收藏集", "4746"),
           library(9, "JAV", "620168"),
-          library(10, "選輯", "4756"),
           library(11, "泡麵番", "190001"),
           library(12, "動畫-已完結", "611380"),
+          library(13, "電視", "4761"),
+          library(14, "動畫-連載中", "598899"),
         ];
       },
     });
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.quickInvite, ctx);
-    assert.equal(ctx.telegram.buttons().includes(serverButton(2)), false);
-    assert.equal(ctx.telegram.buttons().includes(B.allLibraries), false);
-    assert.ok(ctx.telegram.buttons().includes(libraryButton(3, true)));
-    assert.ok(ctx.telegram.buttons().includes(libraryButton(12, true)));
-    assert.ok(ctx.telegram.buttons().includes(libraryButton(9, false)));
-    assert.ok(ctx.telegram.buttons().includes(libraryButton(11, false)));
-    assert.equal(ctx.telegram.buttons().includes(libraryButton(8, false)), false);
-    assert.match(ctx.telegram.last().text, /電影/);
-    assert.doesNotMatch(ctx.telegram.last().text, /收藏集/);
-    await run(B.librariesDone, ctx);
-    assert.match(ctx.telegram.last().text, /媒體庫：電影、動畫-已完結/);
-    assert.doesNotMatch(ctx.telegram.last().text, /媒體庫：.*JAV/);
-    assert.equal(wizarr.created.length, 0);
-    await run(B.confirm, ctx);
+    assert.match(ctx.telegram.last().text, /邀請已建立/);
+    assert.match(ctx.telegram.last().text, /媒體庫：電影、動畫-已完結、電視、動畫-連載中/);
+    assert.doesNotMatch(ctx.telegram.last().text, /JAV|泡麵番|收藏集/);
     assert.deepEqual(wizarr.created, [
       {
         serverIds: [1],
         expiresInDays: 7,
         duration: "unlimited",
         unlimited: true,
-        libraryIds: [3, 12],
+        libraryIds: [3, 12, 13, 14],
         allowDownloads: false,
         allowLiveTv: false,
         allowMobileUploads: false,
       },
     ]);
+    assert.equal(ctx.telegram.photos.length, 1);
+    assert.match(ctx.telegram.photos[0]?.caption ?? "", /NEW1/);
+    assert.match(ctx.telegram.photos[0]?.caption ?? "", /https:\/\/wizarr\.example\/j\/NEW1/);
+  });
+
+  it("Wizarr 沒有回傳媒體庫時仍沿用未過期的快速邀請", async () => {
+    const invites: Awaited<ReturnType<WizarrApi["listInvitations"]>> = [];
+    const created: CreateInvitationInput[] = [];
+    const wizarr = fakeWizarr({
+      async listServers() {
+        return [server(1, "Emby", "emby")];
+      },
+      async listLibraries() {
+        return quickLibraryFixtures();
+      },
+      async listInvitations() {
+        return invites;
+      },
+      async createInvitation(input) {
+        created.push(input);
+        const invite = {
+          id: 9,
+          code: "NEW1",
+          url: "https://wizarr.example/j/NEW1",
+          status: "pending",
+          created: null,
+          expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          usedAt: null,
+          usedBy: null,
+          duration: "unlimited",
+          unlimited: true,
+          libraryIds: [],
+          serverNames: ["Emby"],
+        };
+        invites.push(invite);
+        return invite;
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.quickInvite, ctx);
+    await run(B.quickInvite, ctx);
+    const current = invites[0];
+    assert.ok(current);
+    current.status = "used";
+    await run(B.quickInvite, ctx);
+    assert.equal(created.length, 1);
+    assert.match(ctx.telegram.last().text, /沿用這組代碼/);
+    assert.match(ctx.telegram.last().text, /NEW1/);
+  });
+
+  it("沒有到期時間或缺少預設媒體庫時不會沿用或建立", async () => {
+    const openEnded = fakeWizarr({
+      async listServers() {
+        return [server(1, "Emby", "emby")];
+      },
+      async listLibraries() {
+        return quickLibraryFixtures();
+      },
+      async listInvitations() {
+        return [
+          {
+            id: 8,
+            code: "SAME",
+            url: "https://wizarr.example/j/SAME",
+            status: "pending",
+            created: null,
+            expires: null,
+            usedAt: null,
+            usedBy: null,
+            duration: "unlimited",
+            unlimited: true,
+            libraryIds: [3, 12, 13, 14],
+            serverNames: ["Emby"],
+          },
+        ];
+      },
+    });
+    const openCtx = { wizarr: openEnded, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.quickInvite, openCtx);
+    assert.equal(openEnded.created.length, 1);
+    assert.doesNotMatch(openCtx.telegram.last().text, /沿用這組代碼/);
+
+    const incomplete = fakeWizarr({
+      async listServers() {
+        return [server(1, "Emby", "emby")];
+      },
+      async listLibraries() {
+        return [library(3, "電影", "4"), library(12, "動畫-已完結", "611380")];
+      },
+    });
+    const incompleteCtx = { wizarr: incomplete, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.quickInvite, incompleteCtx);
+    assert.equal(incomplete.created.length, 0);
+    assert.match(incompleteCtx.telegram.last().text, /缺少：動畫-連載中、電視/);
   });
 
   it("沒有 Emby 時不會建立快速邀請", async () => {
@@ -343,6 +443,7 @@ describe("回覆鍵盤", () => {
     await run(B.quickInvite, ctx);
     assert.match(ctx.telegram.last().text, /沒有已驗證的 Emby/);
     assert.equal(wizarr.created.length, 0);
+    assert.equal(ctx.telegram.photos.length, 0);
   });
 
   it("可逐步建立邀請並限制媒體庫", async () => {
@@ -373,6 +474,18 @@ describe("回覆鍵盤", () => {
       },
     ]);
     assert.match(ctx.telegram.last().text, /https:\/\/wizarr\.example\/j\/NEW1/);
+    assert.equal(ctx.telegram.photos.length, 1);
+    assert.match(ctx.telegram.photos[0]?.caption ?? "", /NEW1/);
+  });
+
+  it("列出邀請時會送出每一組網址的 QR code", async () => {
+    const ctx = { wizarr: fakeWizarr(), telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.listInvites, ctx);
+    assert.match(ctx.telegram.last().text, /ABCD/);
+    assert.equal(ctx.telegram.photos.length, 1);
+    assert.match(ctx.telegram.photos[0]?.caption ?? "", /ABCD/);
+    assert.match(ctx.telegram.photos[0]?.caption ?? "", /https:\/\/wizarr\.example\/j\/ABCD/);
+    assert.equal(ctx.telegram.photos[0]?.image[0], 0x89);
   });
 
   it("刪除邀請前會確認", async () => {
@@ -390,6 +503,7 @@ describe("回覆鍵盤", () => {
     await run(B.confirm, ctx);
     assert.equal(deleted, 1);
     assert.match(ctx.telegram.last().text, /invite deleted/);
+    assert.equal(ctx.telegram.photos.length, 0);
   });
 
   it("Wizarr 失敗時保留可讀錯誤", async () => {

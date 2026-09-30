@@ -52,4 +52,20 @@ describe("webhook", () => {
     );
     assert.equal(response.status, 200);
   });
+
+  it("回覆失敗時仍回應 200，避免 Telegram 重送同一則更新", async () => {
+    const failing = createApp(config, new MemorySessionStore(), async () => Response.json({ ok: false, description: "boom" }));
+    const response = await handleWebhook(
+      new Request("http://local/telegram", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Telegram-Bot-Api-Secret-Token": "top-secret" },
+        body: JSON.stringify({
+          update_id: 2,
+          message: { message_id: 2, text: "/start", chat: { id: 7, type: "private" }, from: { id: 7 } },
+        }),
+      }),
+      failing,
+    );
+    assert.equal(response.status, 200);
+  });
 });

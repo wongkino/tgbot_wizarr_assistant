@@ -13,12 +13,15 @@ import {
   formatUserList,
   helpText,
   link,
+  QUICK_LIBRARIES,
   pageWindow,
   unauthorizedText,
   welcomeText,
 } from "./format.ts";
+import { qrPng } from "./qr.ts";
 import {
   B,
+  navRow,
   PAGE,
   confirmKeyboard,
   deleteInviteButton,
@@ -41,9 +44,11 @@ import {
   usersKeyboard,
   withNav,
 } from "./keyboard.ts";
+import { SCREEN_PARENT } from "./session.ts";
 import type {
   AppContext,
   CreateInvitationInput,
+  InvitationInfo,
   InviteDraft,
   InviteFilter,
   LibraryInfo,
@@ -88,7 +93,11 @@ export async function handleUpdate(update: Update, ctx: AppContext): Promise<voi
       console.error("[bot]", error instanceof Error ? error.message : error);
     }
     const detail = error instanceof WizarrError ? `Wizarr 錯誤：${esc(error.message)}` : "處理時發生錯誤，請稍後再試。";
-    await send(ctx, chatId, detail, keyboardFor(screen));
+    try {
+      await send(ctx, chatId, detail, keyboardFor(screen));
+    } catch (sendError) {
+      console.error("[bot] 無法回覆", sendError instanceof Error ? sendError.message : sendError);
+    }
   }
 }
 
@@ -139,7 +148,7 @@ async function dispatch(
     await send(
       ctx,
       chatId,
-      "選擇邀請操作。快速邀請會用 Emby、連結 7 天，並讓你選媒體庫；建立邀請會逐步詢問。",
+      "選擇邀請操作。快速邀請會直接建立；建立邀請會逐步詢問伺服器、期限、媒體庫與權限。",
       invitesKeyboard(),
     );
     return { type: "invites" };
@@ -209,10 +218,8 @@ async function dispatch(
 }
 
 async function showUserList(ctx: AppContext, chatId: number, page: number): Promise<Screen> {
-  const users = await ctx.wizarr.listUsers();
-  const view = pageWindow(users, page, PAGE.users);
-  await send(ctx, chatId, formatUserList(view), withNav(usersKeyboard(), view.page, view.pages));
-  return { type: "user_list", page: view.page };
+  const shown = await showList(ctx, chatId, await ctx.wizarr.listUsers(), page, PAGE.users, formatUserList, usersKeyboard());
+  return { type: "user_list", page: shown };
 }
 
 async function beginPickUser(ctx: AppContext, chatId: number, action: UserAction, page: number): Promise<Screen> {
@@ -232,10 +239,7 @@ async function renderPickUser(
   page: number,
 ): Promise<Screen> {
   const view = pageWindow(users, page, PAGE.users);
-  const rows = view.items.map((user) => [userButton(user.id)]);
-  appendNav(rows, view.page, view.pages);
-  rows.push([B.cancel, B.home]);
-  await send(ctx, chatId, `${actionPrompt(action)}\n\n${formatUserList(view)}`, markup(rows, "輸入 ID 或使用者名稱"));
+  await send(ctx, chatId, `${actionPrompt(action)}\n\n${formatUserList(view)}`, pickKeyboard(view));
   return { type: "pick_user", action, page: view.page };
 }
 
@@ -278,18 +282,7 @@ async function handlePickUser(
     return { type: "users" };
   }
   if (screen.action === "extend") {
-    await send(
-      ctx,
-      chatId,
-      `要把 <b>${esc(user.username)}</b>（#${user.id}）延長幾天？`,
-      markup(
-        [
-          [B.days7, B.days30, B.days90],
-          [B.cancel, B.home],
-        ],
-        "選擇天數",
-      ),
-    );
+    await send(ctx, chatId, `要把 <b>${esc(user.username)}</b>（#${user.id}）延長幾天？`, extendDaysKeyboard());
     return { type: "extend_days", userId: user.id, username: user.username };
   }
 
@@ -313,15 +306,7 @@ async function handleExtendDays(
 ): Promise<Screen> {
   const days = text === B.days7 ? 7 : text === B.days30 ? 30 : text === B.days90 ? 90 : 0;
   if (!days) {
-    await send(
-      ctx,
-      chatId,
-      "請選擇延長天數。",
-      markup([
-        [B.days7, B.days30, B.days90],
-        [B.cancel, B.home],
-      ]),
-    );
+    await send(ctx, chatId, "請選擇延長天數。", extendDaysKeyboard());
     return screen;
   }
   const result = await ctx.wizarr.extendUser(screen.userId, days);
@@ -341,21 +326,12 @@ async function showInviteList(
   filter: InviteFilter,
 ): Promise<Screen> {
   const invites = (await ctx.wizarr.listInvitations()).filter((invite) => filter === "all" || invite.status === filter);
-  const view = pageWindow(invites, page, PAGE.invites);
-  await send(ctx, chatId, formatInviteList(view, filter), withNav(invitesKeyboard(), view.page, view.pages));
-  return { type: "invite_list", page: view.page, filter };
+  const shown = await showList(ctx, chatId, invites, page, PAGE.invites, (view) => formatInviteList(view, filter), invitesKeyboard());
+  for (const invite of pageWindow(invites, shown, PAGE.invites).items) {
+    await sendInviteQr(ctx, chatId, invite);
+  }
+  return { type: "invite_list", page: shown, filter };
 }
-
-const QUICK_INVITE_NOTE =
-  "快速邀請使用預設：連結 7 天、只使用 Emby、帳號無限制，下載、直播與上傳皆關閉。已勾選動畫-已完結、動畫-連載中、電影、電視。JAV 與泡麵番可再選。";
-
-const QUICK_LIBRARY_NAMES = new Set(["JAV", "動畫-已完結", "動畫-連載中", "泡麵番", "電影", "電視"]);
-
-const QUICK_LIBRARY_EXTERNAL_IDS = new Set(["620168", "611380", "598899", "190001", "4761", "4"]);
-
-const QUICK_LIBRARY_DEFAULT_NAMES = new Set(["動畫-已完結", "動畫-連載中", "電影", "電視"]);
-
-const QUICK_LIBRARY_DEFAULT_EXTERNAL_IDS = new Set(["611380", "598899", "4761", "4"]);
 
 async function beginQuickInvite(ctx: AppContext, chatId: number): Promise<Screen> {
   const servers = await embyServers(ctx);
@@ -363,70 +339,119 @@ async function beginQuickInvite(ctx: AppContext, chatId: number): Promise<Screen
     await send(ctx, chatId, "沒有已驗證的 Emby 伺服器，無法建立快速邀請。", invitesKeyboard());
     return { type: "invites" };
   }
-  if (servers.length === 1) {
-    const server = servers[0];
-    if (!server) return { type: "invites" };
-    return startQuickLibraries(ctx, chatId, server);
-  }
-  await send(ctx, chatId, `選擇 Emby 伺服器。\n${QUICK_INVITE_NOTE}`, serverChoiceKeyboard(servers));
+  const only = servers.length === 1 ? servers[0] : undefined;
+  if (only) return createQuickInvite(ctx, chatId, only);
+  await send(ctx, chatId, "選擇 Emby 伺服器，選完會立即建立邀請。", serverChoiceKeyboard(servers));
   return { type: "quick_invite_server" };
 }
 
 async function handleQuickInviteServer(text: string, ctx: AppContext, chatId: number): Promise<Screen> {
   const servers = await embyServers(ctx);
-  const serverId = parseServerButton(text);
-  const server = serverId == null ? undefined : servers.find((item) => item.id === serverId);
-  if (!server) {
-    await send(ctx, chatId, "請點選其中一台已驗證的 Emby 伺服器。", serverChoiceKeyboard(servers));
-    return { type: "quick_invite_server" };
-  }
-  return startQuickLibraries(ctx, chatId, server);
+  const server = await chosenServer(text, ctx, chatId, servers, "請點選其中一台已驗證的 Emby 伺服器。");
+  if (!server) return { type: "quick_invite_server" };
+  return createQuickInvite(ctx, chatId, server);
 }
 
-async function startQuickLibraries(ctx: AppContext, chatId: number, server: ServerInfo): Promise<Screen> {
-  const libraries = quickInviteLibraries(await enabledLibraries(ctx, server.id));
-  if (!libraries.length) {
-    await send(ctx, chatId, "這台 Emby 沒有符合篩選的媒體庫，無法建立快速邀請。", invitesKeyboard());
+const QUICK_INVITE_TTL_SECONDS = 8 * 24 * 60 * 60;
+
+async function createQuickInvite(ctx: AppContext, chatId: number, server: ServerInfo): Promise<Screen> {
+  const { selected, missing } = matchQuickLibraries(await enabledLibraries(ctx, server.id));
+  if (missing.length) {
+    await send(
+      ctx,
+      chatId,
+      `這台 Emby 沒有完整的預設媒體庫，無法建立快速邀請。\n缺少：${missing.join("、")}。`,
+      invitesKeyboard(),
+    );
     return { type: "invites" };
   }
-  const selected = libraries.filter(isQuickInviteDefault).sort((a, b) => a.id - b.id);
-  const draft: InviteDraft = {
-    ...quickDraft(server),
-    libraryIds: selected.map((library) => library.id),
-    libraryNames: selected.map((library) => library.name),
-  };
-  return renderLibraryPick(ctx, chatId, draft, 0, libraries, QUICK_INVITE_NOTE, true);
-}
-
-function isQuickInviteLibrary(library: LibraryInfo): boolean {
-  return QUICK_LIBRARY_NAMES.has(library.name) || (library.externalId != null && QUICK_LIBRARY_EXTERNAL_IDS.has(library.externalId));
-}
-
-function isQuickInviteDefault(library: LibraryInfo): boolean {
-  return (
-    QUICK_LIBRARY_DEFAULT_NAMES.has(library.name) ||
-    (library.externalId != null && QUICK_LIBRARY_DEFAULT_EXTERNAL_IDS.has(library.externalId))
-  );
-}
-
-function quickInviteLibraries(libraries: LibraryInfo[]): LibraryInfo[] {
-  return libraries.filter(isQuickInviteLibrary);
-}
-
-function quickDraft(server: ServerInfo): InviteDraft {
-  return {
-    serverId: server.id,
-    serverName: server.name,
+  const libraryIds = selected.map((library) => library.id);
+  const libraries = `媒體庫：${selected.map((library) => esc(library.name)).join("、")}`;
+  const invites = await ctx.wizarr.listInvitations();
+  const existing = reusableQuickInvite(invites, libraryIds, await savedQuickInvite(ctx, server.id));
+  if (existing) {
+    await sendCreatedInvitation(ctx, chatId, existing, libraries, "已有相同的快速邀請，沿用這組代碼。");
+    return { type: "invites" };
+  }
+  const invitation = await ctx.wizarr.createInvitation({
+    serverIds: [server.id],
     expiresInDays: 7,
     duration: "unlimited",
     unlimited: true,
-    useAllLibraries: false,
-    libraryIds: [],
-    libraryNames: [],
+    libraryIds,
     allowDownloads: false,
     allowLiveTv: false,
     allowMobileUploads: false,
-  };
+  });
+  try {
+    await rememberQuickInvite(ctx, server.id, invitation.code, libraryIds);
+  } catch (error) {
+    console.error("[bot] 無法記住快速邀請", error instanceof Error ? error.message : error);
+  }
+  await sendCreatedInvitation(ctx, chatId, invitation, libraries);
+  return { type: "invites" };
+}
+
+function reusableQuickInvite(
+  invites: InvitationInfo[],
+  libraryIds: number[],
+  saved: SavedQuickInvite | null,
+  now = Date.now(),
+): InvitationInfo | undefined {
+  if (!saved || !sameIds(saved.libraryIds, libraryIds)) return undefined;
+  return invites.find((invite) => invite.code === saved.code && quickInviteStillOpen(invite, now));
+}
+
+function quickInviteStillOpen(invite: InvitationInfo, now: number): boolean {
+  if (!invite.unlimited || (invite.status !== "pending" && invite.status !== "used") || !invite.expires) return false;
+  const time = Date.parse(invite.expires);
+  return !Number.isNaN(time) && time > now && time <= now + QUICK_INVITE_TTL_SECONDS * 1000;
+}
+
+function matchQuickLibraries(libraries: LibraryInfo[]): { selected: LibraryInfo[]; missing: string[] } {
+  const selected = new Map<number, LibraryInfo>();
+  const missing: string[] = [];
+  for (const preset of QUICK_LIBRARIES) {
+    const matches = libraries.filter((library) => library.name === preset.name || library.externalId === preset.externalId);
+    if (!matches.length) missing.push(preset.name);
+    for (const library of matches) selected.set(library.id, library);
+  }
+  return { selected: [...selected.values()].sort((a, b) => a.id - b.id), missing };
+}
+
+interface SavedQuickInvite {
+  code: string;
+  libraryIds: number[];
+}
+
+async function savedQuickInvite(ctx: AppContext, serverId: number): Promise<SavedQuickInvite | null> {
+  const raw = await ctx.sessions.getText(`quick-invite:${serverId}`);
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const code = (parsed as { code?: unknown }).code;
+    const libraryIds = (parsed as { libraryIds?: unknown }).libraryIds;
+    if (typeof code !== "string" || !code || !Array.isArray(libraryIds)) return null;
+    const ids = libraryIds.filter((id): id is number => typeof id === "number" && Number.isFinite(id) && id > 0);
+    if (ids.length !== libraryIds.length) return null;
+    return { code, libraryIds: ids };
+  } catch {
+    return null;
+  }
+}
+
+async function rememberQuickInvite(ctx: AppContext, serverId: number, code: string, libraryIds: number[]): Promise<void> {
+  if (!code) return;
+  const saved: SavedQuickInvite = { code, libraryIds };
+  await ctx.sessions.setText(`quick-invite:${serverId}`, JSON.stringify(saved), QUICK_INVITE_TTL_SECONDS);
+}
+
+function sameIds(left: number[], right: number[]): boolean {
+  if (left.length !== right.length) return false;
+  const a = [...left].sort((x, y) => x - y);
+  const b = [...right].sort((x, y) => x - y);
+  return a.every((id, index) => id === b[index]);
 }
 
 function isEmby(server: ServerInfo): boolean {
@@ -453,12 +478,8 @@ async function beginCreateInvite(ctx: AppContext, chatId: number): Promise<Scree
 
 async function handleInviteServer(text: string, ctx: AppContext, chatId: number): Promise<Screen> {
   const servers = await verifiedServers(ctx);
-  const serverId = parseServerButton(text);
-  const server = serverId == null ? undefined : servers.find((item) => item.id === serverId);
-  if (!server) {
-    await send(ctx, chatId, "請點選其中一台已驗證的伺服器。", serverChoiceKeyboard(servers));
-    return { type: "invite_server" };
-  }
+  const server = await chosenServer(text, ctx, chatId, servers, "請點選其中一台已驗證的伺服器。");
+  if (!server) return { type: "invite_server" };
   const draft = emptyDraft();
   draft.serverId = server.id;
   draft.serverName = server.name;
@@ -489,14 +510,11 @@ async function handleInviteDuration(draft: InviteDraft, text: string, ctx: AppCo
 }
 
 async function handleLibraryMode(draft: InviteDraft, text: string, ctx: AppContext, chatId: number): Promise<Screen> {
-  if (text === B.allLibraries) {
-    const next = { ...draft, useAllLibraries: true, libraryIds: [], libraryNames: [] };
-    return showPermissions(ctx, chatId, next);
-  }
+  if (text === B.allLibraries) return showPermissions(ctx, chatId, allLibraries(draft));
   if (text === B.pickLibraries) {
     const libraries = await enabledLibraries(ctx, draft.serverId);
     if (!libraries.length) {
-      const next = { ...draft, useAllLibraries: true, libraryIds: [], libraryNames: [] };
+      const next = allLibraries(draft);
       await send(
         ctx,
         chatId,
@@ -517,46 +535,24 @@ async function handleLibraryPick(
   ctx: AppContext,
   chatId: number,
 ): Promise<Screen> {
-  const available = await enabledLibraries(ctx, screen.draft.serverId);
-  const quick = screen.quick === true;
-  const libraries = quick ? quickInviteLibraries(available) : available;
+  const libraries = await enabledLibraries(ctx, screen.draft.serverId);
   if (text === B.prev || text === B.next) {
-    return renderLibraryPick(ctx, chatId, screen.draft, shiftPage(screen.page, text), libraries, undefined, quick);
+    return renderLibraryPick(ctx, chatId, screen.draft, shiftPage(screen.page, text), libraries);
   }
   if (text === B.allLibraries) {
-    if (quick) {
-      return renderLibraryPick(ctx, chatId, screen.draft, screen.page, libraries, "快速邀請不能改用全部媒體庫。", true);
-    }
-    return showPermissions(ctx, chatId, { ...screen.draft, useAllLibraries: true, libraryIds: [], libraryNames: [] });
+    return showPermissions(ctx, chatId, allLibraries(screen.draft));
   }
   if (text === B.librariesDone) {
     if (!screen.draft.libraryIds.length) {
-      return renderLibraryPick(
-        ctx,
-        chatId,
-        screen.draft,
-        screen.page,
-        libraries,
-        quick ? "請至少選一個媒體庫。" : "請至少選一個媒體庫，或改用全部媒體庫。",
-        quick,
-      );
+      return renderLibraryPick(ctx, chatId, screen.draft, screen.page, libraries, "請至少選一個媒體庫，或改用全部媒體庫。");
     }
-    const next = { ...screen.draft, useAllLibraries: false };
-    return quick ? askCreateConfirm(ctx, chatId, next, QUICK_INVITE_NOTE) : showPermissions(ctx, chatId, next);
+    return showPermissions(ctx, chatId, { ...screen.draft, useAllLibraries: false });
   }
 
   const libraryId = parseLibraryButton(text);
   const library = libraryId == null ? undefined : libraries.find((item) => item.id === libraryId);
   if (!library) {
-    return renderLibraryPick(
-      ctx,
-      chatId,
-      screen.draft,
-      screen.page,
-      libraries,
-      quick ? "請點選媒體庫，或按媒體庫選好了。" : "請點選媒體庫、選好了，或改用全部媒體庫。",
-      quick,
-    );
+    return renderLibraryPick(ctx, chatId, screen.draft, screen.page, libraries, "請點選媒體庫、選好了，或改用全部媒體庫。");
   }
 
   const selected = new Map(screen.draft.libraryIds.map((id, index) => [id, screen.draft.libraryNames[index] ?? library.name]));
@@ -569,7 +565,7 @@ async function handleLibraryPick(
     libraryIds,
     libraryNames: libraryIds.map((id) => selected.get(id) ?? ""),
   };
-  return renderLibraryPick(ctx, chatId, next, screen.page, libraries, undefined, quick);
+  return renderLibraryPick(ctx, chatId, next, screen.page, libraries);
 }
 
 async function renderLibraryPick(
@@ -579,16 +575,16 @@ async function renderLibraryPick(
   page: number,
   libraries: LibraryInfo[],
   notice?: string,
-  quick = false,
 ): Promise<Screen> {
   const view = pageWindow(libraries, page, PAGE.libraries);
-  const rows = view.items.map((library) => [libraryButton(library.id, draft.libraryIds.includes(library.id))]);
-  appendNav(rows, view.page, view.pages);
-  rows.push(quick ? [B.librariesDone] : [B.librariesDone, B.allLibraries]);
-  rows.push([B.cancel, B.home]);
+  const rows = choiceRows(
+    view.items.map((library) => libraryButton(library.id, draft.libraryIds.includes(library.id))),
+    view,
+    [[B.librariesDone, B.allLibraries]],
+  );
   const body = formatLibraryChoices(view, draft.libraryIds);
   await send(ctx, chatId, notice ? `${notice}\n\n${body}` : body, markup(rows, "選擇媒體庫"));
-  return { type: "invite_library_pick", draft, page: view.page, quick };
+  return { type: "invite_library_pick", draft, page: view.page };
 }
 
 async function handlePermissions(draft: InviteDraft, text: string, ctx: AppContext, chatId: number): Promise<Screen> {
@@ -611,19 +607,13 @@ async function showPermissions(ctx: AppContext, chatId: number, draft: InviteDra
   return { type: "invite_permissions", draft };
 }
 
-async function askCreateConfirm(
-  ctx: AppContext,
-  chatId: number,
-  draft: InviteDraft,
-  note?: string,
-): Promise<Screen> {
+async function askCreateConfirm(ctx: AppContext, chatId: number, draft: InviteDraft): Promise<Screen> {
   const input = toInvitationInput(draft);
   if (!input) {
     await send(ctx, chatId, "邀請資料不完整，請重新建立。", invitesKeyboard());
     return { type: "invites" };
   }
-  const summary = formatInviteSummary(draft);
-  await send(ctx, chatId, note ? `${note}\n\n${summary}` : summary, confirmKeyboard());
+  await send(ctx, chatId, formatInviteSummary(draft), confirmKeyboard());
   return { type: "confirm", pending: { kind: "create_invite", input, serverName: draft.serverName ?? "" } };
 }
 
@@ -636,9 +626,10 @@ async function beginDeleteInvite(ctx: AppContext, chatId: number, page: number):
     return { type: "invites" };
   }
   const view = pageWindow(invites, page, PAGE.invites);
-  const rows = view.items.map((invite) => [deleteInviteButton(invite.id)]);
-  appendNav(rows, view.page, view.pages);
-  rows.push([B.cancel, B.home]);
+  const rows = choiceRows(
+    view.items.map((invite) => deleteInviteButton(invite.id)),
+    view,
+  );
   await send(
     ctx,
     chatId,
@@ -689,25 +680,58 @@ async function handleConfirm(pending: PendingAction, text: string, ctx: AppConte
   }
 
   const invitation = await ctx.wizarr.createInvitation(pending.input);
-  await send(
-    ctx,
-    chatId,
-    ["邀請已建立。", `代碼：<code>${esc(invitation.code)}</code>`, link(invitation.url)].join("\n"),
-    invitesKeyboard(),
-  );
+  await sendCreatedInvitation(ctx, chatId, invitation);
   return { type: "invites" };
 }
 
+async function sendCreatedInvitation(
+  ctx: AppContext,
+  chatId: number,
+  invitation: { code: string; url: string },
+  detail?: string,
+  title = "邀請已建立。",
+): Promise<void> {
+  const lines = [title, inviteCaption(invitation)];
+  if (detail) lines.push(detail);
+  await send(ctx, chatId, lines.join("\n"), invitesKeyboard());
+  await sendInviteQr(ctx, chatId, invitation);
+}
+
+async function sendInviteQr(
+  ctx: AppContext,
+  chatId: number,
+  invitation: { code: string; url: string },
+): Promise<void> {
+  if (!/^https?:\/\//i.test(invitation.url)) return;
+  await ctx.telegram.sendPhoto(chatId, await qrPng(invitation.url), inviteCaption(invitation));
+}
+
+function inviteCaption(invitation: { code: string; url: string }): string {
+  return `代碼：<code>${esc(invitation.code)}</code>\n${link(invitation.url)}`;
+}
+
 async function showLibraries(ctx: AppContext, chatId: number, page: number): Promise<Screen> {
-  const view = pageWindow(await ctx.wizarr.listLibraries(), page, PAGE.libraries);
-  await send(ctx, chatId, formatLibraries(view), withNav(librariesKeyboard(), view.page, view.pages));
-  return { type: "library_list", page: view.page };
+  const shown = await showList(ctx, chatId, await ctx.wizarr.listLibraries(), page, PAGE.libraries, formatLibraries, librariesKeyboard());
+  return { type: "library_list", page: shown };
 }
 
 async function showServers(ctx: AppContext, chatId: number, page: number): Promise<Screen> {
-  const view = pageWindow(await ctx.wizarr.listServers(), page, PAGE.servers);
-  await send(ctx, chatId, formatServers(view), withNav(serversKeyboard(), view.page, view.pages));
-  return { type: "server_list", page: view.page };
+  const shown = await showList(ctx, chatId, await ctx.wizarr.listServers(), page, PAGE.servers, formatServers, serversKeyboard());
+  return { type: "server_list", page: shown };
+}
+
+async function showList<T>(
+  ctx: AppContext,
+  chatId: number,
+  items: T[],
+  page: number,
+  size: number,
+  format: (view: ReturnType<typeof pageWindow<T>>) => string,
+  keyboard: ReplyMarkup,
+): Promise<number> {
+  const view = pageWindow(items, page, size);
+  await send(ctx, chatId, format(view), withNav(keyboard, view.page, view.pages));
+  return view.page;
 }
 
 async function enabledLibraries(ctx: AppContext, serverId: number | undefined): Promise<LibraryInfo[]> {
@@ -739,6 +763,38 @@ function toInvitationInput(draft: InviteDraft): CreateInvitationInput | null {
   };
 }
 
+async function chosenServer(
+  text: string,
+  ctx: AppContext,
+  chatId: number,
+  servers: ServerInfo[],
+  miss: string,
+): Promise<ServerInfo | undefined> {
+  const serverId = parseServerButton(text);
+  const server = serverId == null ? undefined : servers.find((item) => item.id === serverId);
+  if (server) return server;
+  await send(ctx, chatId, miss, serverChoiceKeyboard(servers));
+  return undefined;
+}
+
+function extendDaysKeyboard(): ReplyMarkup {
+  return markup(withCancel([B.days7, B.days30, B.days90]), "選擇天數");
+}
+
+function allLibraries(draft: InviteDraft): InviteDraft {
+  return { ...draft, useAllLibraries: true, libraryIds: [], libraryNames: [] };
+}
+
+function withCancel(...rows: string[][]): string[][] {
+  return [...rows, [B.cancel, B.home]];
+}
+
+function choiceRows(labels: string[], view?: { page: number; pages: number }, beforeCancel: string[][] = []): string[][] {
+  const rows = labels.map((text) => [text]);
+  if (view) appendNav(rows, view.page, view.pages);
+  return withCancel(...rows, ...beforeCancel);
+}
+
 function emptyDraft(): InviteDraft {
   return {
     libraryIds: [],
@@ -766,48 +822,27 @@ function durationChoice(text: string): { duration: string; unlimited: boolean } 
 }
 
 function expiryKeyboard(): ReplyMarkup {
-  return markup(
-    [
-      [B.expiry1, B.expiry7],
-      [B.expiry30, B.expiryNever],
-      [B.cancel, B.home],
-    ],
-    "邀請連結有效期",
-  );
+  return markup(withCancel([B.expiry1, B.expiry7], [B.expiry30, B.expiryNever]), "邀請連結有效期");
 }
 
 function durationKeyboard(): ReplyMarkup {
-  return markup(
-    [
-      [B.dur7, B.dur30],
-      [B.dur90, B.durUnlimited],
-      [B.cancel, B.home],
-    ],
-    "帳號使用期限",
-  );
+  return markup(withCancel([B.dur7, B.dur30], [B.dur90, B.durUnlimited]), "帳號使用期限");
 }
 
 function libraryModeKeyboard(): ReplyMarkup {
-  return markup([[B.allLibraries], [B.pickLibraries], [B.cancel, B.home]], "選擇媒體庫");
+  return markup(withCancel([B.allLibraries], [B.pickLibraries]), "選擇媒體庫");
 }
 
 function serverChoiceKeyboard(servers: ServerInfo[]): ReplyMarkup {
-  const rows = servers.map((server) => [serverButton(server.id)]);
-  rows.push([B.cancel, B.home]);
-  return markup(rows, "選擇伺服器");
+  return markup(choiceRows(servers.map((server) => serverButton(server.id))), "選擇伺服器");
 }
 
 function pickKeyboard(view: { page: number; pages: number; items: UserInfo[] }): ReplyMarkup {
-  const rows = view.items.map((user) => [userButton(user.id)]);
-  appendNav(rows, view.page, view.pages);
-  rows.push([B.cancel, B.home]);
-  return markup(rows, "輸入 ID 或使用者名稱");
+  return markup(choiceRows(view.items.map((user) => userButton(user.id)), view), "輸入 ID 或使用者名稱");
 }
 
 function appendNav(rows: string[][], page: number, pages: number): void {
-  const nav: string[] = [];
-  if (page > 0) nav.push(B.prev);
-  if (page < pages - 1) nav.push(B.next);
+  const nav = navRow(page, pages);
   if (nav.length) rows.push(nav);
 }
 
@@ -816,34 +851,8 @@ function shiftPage(page: number, text: string): number {
 }
 
 function parentOf(screen: Screen): Screen {
-  switch (screen.type) {
-    case "users":
-    case "user_list":
-    case "pick_user":
-    case "extend_days":
-      return { type: "users" };
-    case "invites":
-    case "invite_list":
-    case "invite_server":
-    case "quick_invite_server":
-    case "invite_expiry":
-    case "invite_duration":
-    case "invite_library_mode":
-    case "invite_library_pick":
-    case "invite_permissions":
-    case "delete_invite_pick":
-      return { type: "invites" };
-    case "libraries":
-    case "library_list":
-      return { type: "libraries" };
-    case "servers":
-    case "server_list":
-      return { type: "servers" };
-    case "confirm":
-      return pendingParent(screen.pending);
-    default:
-      return { type: "main" };
-  }
+  if (screen.type === "confirm") return pendingParent(screen.pending);
+  return { type: SCREEN_PARENT[screen.type] };
 }
 
 function pendingParent(pending: PendingAction): Screen {

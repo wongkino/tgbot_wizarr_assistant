@@ -1,38 +1,74 @@
 import type { Screen, SessionStore } from "./types.ts";
 
-const SCREEN_TYPES = new Set<Screen["type"]>([
-  "main",
-  "users",
-  "invites",
-  "libraries",
-  "servers",
-  "user_list",
-  "invite_list",
-  "library_list",
-  "server_list",
-  "pick_user",
-  "extend_days",
-  "invite_server",
-  "quick_invite_server",
-  "invite_expiry",
-  "invite_duration",
-  "invite_library_mode",
-  "invite_library_pick",
-  "invite_permissions",
-  "delete_invite_pick",
-  "confirm",
-]);
+export const SCREEN_PARENT = {
+  main: "main",
+  users: "users",
+  user_list: "users",
+  pick_user: "users",
+  extend_days: "users",
+  invites: "invites",
+  invite_list: "invites",
+  invite_server: "invites",
+  quick_invite_server: "invites",
+  invite_expiry: "invites",
+  invite_duration: "invites",
+  invite_library_mode: "invites",
+  invite_library_pick: "invites",
+  invite_permissions: "invites",
+  delete_invite_pick: "invites",
+  libraries: "libraries",
+  library_list: "libraries",
+  servers: "servers",
+  server_list: "servers",
+  confirm: "main",
+} as const satisfies Record<Screen["type"], "main" | "users" | "invites" | "libraries" | "servers">;
+
+const SCREEN_TYPES = new Set<Screen["type"]>(Object.keys(SCREEN_PARENT) as Screen["type"][]);
+const INVITE_FILTERS = new Set(["all", "pending", "used", "expired"]);
+const USER_ACTIONS = new Set(["enable", "disable", "extend", "delete", "reset"]);
+const EXPIRY_DAYS = new Set([1, 7, 30]);
 
 export function isScreen(value: unknown): value is Screen {
-  if (!value || typeof value !== "object") return false;
-  const type = (value as { type?: unknown }).type;
-  return typeof type === "string" && SCREEN_TYPES.has(type as Screen["type"]);
+  const record = asRecord(value);
+  if (!record || typeof record.type !== "string" || !SCREEN_TYPES.has(record.type as Screen["type"])) return false;
+  switch (record.type) {
+    case "main":
+    case "users":
+    case "invites":
+    case "libraries":
+    case "servers":
+    case "invite_server":
+    case "quick_invite_server":
+      return true;
+    case "user_list":
+    case "library_list":
+    case "server_list":
+    case "delete_invite_pick":
+      return isNumber(record.page);
+    case "invite_list":
+      return isNumber(record.page) && typeof record.filter === "string" && INVITE_FILTERS.has(record.filter);
+    case "pick_user":
+      return isNumber(record.page) && typeof record.action === "string" && USER_ACTIONS.has(record.action);
+    case "extend_days":
+      return isNumber(record.userId) && typeof record.username === "string";
+    case "invite_expiry":
+    case "invite_duration":
+    case "invite_library_mode":
+    case "invite_permissions":
+      return isDraft(record.draft);
+    case "invite_library_pick":
+      return isNumber(record.page) && isDraft(record.draft);
+    case "confirm":
+      return isPending(record.pending);
+    default:
+      return false;
+  }
 }
 
-export class MemorySessionStore implements SessionStore {
-  private readonly rows = new Map<string, { value: Screen; expires: number }>();
+class MemoryStore<T> {
+  private readonly rows = new Map<string, { value: T; expires: number }>();
 
-  async get(key: string): Promise<Screen | null> {
+  get(key: string): T | null {
     const row = this.rows.get(key);
     if (!row) return null;
     if (row.expires <= Date.now()) {
@@ -42,12 +78,37 @@ export class MemorySessionStore implements SessionStore {
     return row.value;
   }
 
-  async set(key: string, value: Screen, ttlSeconds: number): Promise<void> {
+  set(key: string, value: T, ttlSeconds: number): void {
     this.rows.set(key, { value, expires: Date.now() + ttlSeconds * 1000 });
   }
 
-  async delete(key: string): Promise<void> {
+  delete(key: string): void {
     this.rows.delete(key);
+  }
+}
+
+export class MemorySessionStore implements SessionStore {
+  private readonly screens = new MemoryStore<Screen>();
+  private readonly text = new MemoryStore<string>();
+
+  async get(key: string): Promise<Screen | null> {
+    return this.screens.get(key);
+  }
+
+  async set(key: string, value: Screen, ttlSeconds: number): Promise<void> {
+    this.screens.set(key, value, ttlSeconds);
+  }
+
+  async delete(key: string): Promise<void> {
+    this.screens.delete(key);
+  }
+
+  async getText(key: string): Promise<string | null> {
+    return this.text.get(key);
+  }
+
+  async setText(key: string, value: string, ttlSeconds: number): Promise<void> {
+    this.text.set(key, value, ttlSeconds);
   }
 }
 
@@ -76,12 +137,70 @@ export class KvSessionStore implements SessionStore {
   }
 
   async set(key: string, value: Screen, ttlSeconds: number): Promise<void> {
-    await this.kv.put(`session:${key}`, JSON.stringify(value), {
-      expirationTtl: Math.max(60, Math.floor(ttlSeconds)),
-    });
+    await this.kv.put(`session:${key}`, JSON.stringify(value), { expirationTtl: ttl(ttlSeconds) });
   }
 
   async delete(key: string): Promise<void> {
     await this.kv.delete(`session:${key}`);
   }
+
+  async getText(key: string): Promise<string | null> {
+    return this.kv.get(`data:${key}`);
+  }
+
+  async setText(key: string, value: string, ttlSeconds: number): Promise<void> {
+    await this.kv.put(`data:${key}`, value, { expirationTtl: ttl(ttlSeconds) });
+  }
+}
+
+function ttl(seconds: number): number {
+  return Math.max(60, Math.floor(seconds));
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  return null;
+}
+
+function isNumber(value: unknown): boolean {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isDraft(value: unknown): boolean {
+  const draft = asRecord(value);
+  return Boolean(
+    draft &&
+      Array.isArray(draft.libraryIds) &&
+      Array.isArray(draft.libraryNames) &&
+      typeof draft.allowDownloads === "boolean" &&
+      typeof draft.allowLiveTv === "boolean" &&
+      typeof draft.allowMobileUploads === "boolean",
+  );
+}
+
+function isPending(value: unknown): boolean {
+  const pending = asRecord(value);
+  if (!pending || typeof pending.kind !== "string") return false;
+  if (pending.kind === "disable_user" || pending.kind === "delete_user") {
+    return isNumber(pending.userId) && typeof pending.username === "string";
+  }
+  if (pending.kind === "delete_invite") {
+    return isNumber(pending.invitationId) && typeof pending.code === "string";
+  }
+  if (pending.kind === "create_invite") {
+    const input = asRecord(pending.input);
+    return (
+      typeof pending.serverName === "string" &&
+      Boolean(input) &&
+      Array.isArray(input?.serverIds) &&
+      (input?.expiresInDays === null || EXPIRY_DAYS.has(input?.expiresInDays as number)) &&
+      typeof input?.duration === "string" &&
+      typeof input?.unlimited === "boolean" &&
+      Array.isArray(input?.libraryIds) &&
+      typeof input?.allowDownloads === "boolean" &&
+      typeof input?.allowLiveTv === "boolean" &&
+      typeof input?.allowMobileUploads === "boolean"
+    );
+  }
+  return false;
 }
