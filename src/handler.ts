@@ -405,7 +405,7 @@ async function showInviteList(
 }
 
 async function beginQuickInvite(ctx: Req, chatId: number): Promise<Screen> {
-  const servers = await embyServers(ctx);
+  const servers = await verifiedServers(ctx);
   const settings = await loadQuickSettings(ctx.sessions);
   if (settings.servers !== null) {
     const { selected, missing } = matchServers(servers, settings.servers);
@@ -414,7 +414,7 @@ async function beginQuickInvite(ctx: Req, chatId: number): Promise<Screen> {
     return { type: "invites" };
   }
   return chooseServers(ctx, chatId, "quick_invite_server", servers, {
-    empty: { message: ctx.cat.msg.noEmbyQuick, keyboard: invitesKeyboard(ctx.cat), screen: { type: "invites" } },
+    empty: { message: ctx.cat.msg.noServersQuick, keyboard: invitesKeyboard(ctx.cat), screen: { type: "invites" } },
     single: (servers) => createQuickInvite(ctx, chatId, servers),
   });
 }
@@ -425,8 +425,8 @@ async function handleQuickInviteServer(
   ctx: Req,
   chatId: number,
 ): Promise<Screen> {
-  const servers = await embyServers(ctx);
-  return handleServerPick(screen, text, ctx, chatId, servers, ctx.cat.msg.pickEmbyVerified, (chosen) =>
+  const servers = await verifiedServers(ctx);
+  return handleServerPick(screen, text, ctx, chatId, servers, ctx.cat.msg.pickVerified, (chosen) =>
     createQuickInvite(ctx, chatId, chosen),
   );
 }
@@ -582,14 +582,6 @@ function sameIds(left: number[], right: number[]): boolean {
   return a.every((id, index) => id === b[index]);
 }
 
-function isEmby(server: ServerInfo): boolean {
-  return server.serverType.trim().toLowerCase() === "emby";
-}
-
-async function embyServers(ctx: Req): Promise<ServerInfo[]> {
-  return (await verifiedServers(ctx)).filter(isEmby);
-}
-
 async function verifiedServers(ctx: Req): Promise<ServerInfo[]> {
   return (await listServersNamed(ctx)).filter((server) => server.verified);
 }
@@ -698,8 +690,8 @@ async function handleSettingsPermissions(
 }
 
 async function beginSettingsLibraries(ctx: Req, chatId: number): Promise<Screen> {
-  return chooseServers(ctx, chatId, "settings_library_server", await embyServers(ctx), {
-    empty: { message: ctx.cat.msg.noEmbySettings, keyboard: settingsKeyboard(ctx.cat), screen: { type: "settings" } },
+  return chooseServers(ctx, chatId, "settings_library_server", await verifiedServers(ctx), {
+    empty: { message: ctx.cat.msg.noServersLibrarySettings, keyboard: settingsKeyboard(ctx.cat), screen: { type: "settings" } },
     single: async (servers) => {
       const serverIds = [servers[0].id];
       const enabled = await enabledLibraries(ctx, serverIds);
@@ -709,9 +701,9 @@ async function beginSettingsLibraries(ctx: Req, chatId: number): Promise<Screen>
 }
 
 async function beginSettingsServers(ctx: Req, chatId: number): Promise<Screen> {
-  const servers = await embyServers(ctx);
+  const servers = await verifiedServers(ctx);
   if (!servers.length) {
-    await send(ctx, chatId, ctx.cat.msg.noEmbyServersSettings, settingsKeyboard(ctx.cat));
+    await send(ctx, chatId, ctx.cat.msg.noServersSettings, settingsKeyboard(ctx.cat));
     return { type: "settings" };
   }
   const settings = await loadQuickSettings(ctx.sessions);
@@ -729,8 +721,8 @@ async function handleSettingsServer(
     await updateQuickSettings(ctx, { servers: null });
     return showSettings(ctx, chatId, ctx.cat.msg.askServersSaved);
   }
-  const servers = await embyServers(ctx);
-  return handleServerPick(screen, text, ctx, chatId, servers, ctx.cat.msg.pickEmbyVerified, async (chosen) => {
+  const servers = await verifiedServers(ctx);
+  return handleServerPick(screen, text, ctx, chatId, servers, ctx.cat.msg.pickVerified, async (chosen) => {
     await updateQuickSettings(ctx, { servers: chosen.map((server) => server.name).sort() });
     return showSettings(ctx, chatId, ctx.cat.msg.serversSaved);
   });
@@ -742,8 +734,8 @@ async function handleSettingsLibraryServer(
   ctx: Req,
   chatId: number,
 ): Promise<Screen> {
-  const servers = await embyServers(ctx);
-  return handleServerPick(screen, text, ctx, chatId, servers, ctx.cat.msg.pickEmbyVerified, async (chosen) => {
+  const servers = await verifiedServers(ctx);
+  return handleServerPick(screen, text, ctx, chatId, servers, ctx.cat.msg.pickVerified, async (chosen) => {
     const serverIds = chosen.map((server) => server.id).sort((a, b) => a - b);
     const enabled = await enabledLibraries(ctx, serverIds);
     return renderSettingsLibraryPick(ctx, chatId, serverIds, await selectedLibraryIds(ctx, enabled), 0, enabled);
@@ -1224,9 +1216,9 @@ async function renderServerPick(
   notice?: string,
 ): Promise<Screen> {
   const prompts: Record<ServerPickScreen, string> = {
-    quick_invite_server: ctx.cat.msg.chooseEmbyQuick,
-    settings_library_server: ctx.cat.msg.chooseEmbySettings,
-    settings_server: ctx.cat.msg.chooseEmbyServersSettings,
+    quick_invite_server: ctx.cat.msg.chooseServersQuick,
+    settings_library_server: ctx.cat.msg.chooseLibraryServersSettings,
+    settings_server: ctx.cat.msg.chooseServersSettings,
     invite_server: "",
   };
   const base = prompts[type]

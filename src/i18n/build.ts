@@ -146,9 +146,8 @@ export interface CatalogStrings {
     chooseDays: string;
     /** {date} */
     newExpiryLine: string;
-    noEmbyQuick: string;
-    chooseEmbyQuick: string;
-    pickEmbyVerified: string;
+    noServersQuick: string;
+    chooseServersQuick: string;
     pickVerified: string;
     /** {missing} {settingsButton} */
     quickMissingLibraries: string;
@@ -164,11 +163,11 @@ export interface CatalogStrings {
     durationSaved: string;
     permissionsToggleOrConfirm: string;
     permissionsSaved: string;
-    noEmbySettings: string;
-    chooseEmbySettings: string;
+    noServersLibrarySettings: string;
+    chooseLibraryServersSettings: string;
     /** 預設伺服器的選擇提示 */
-    chooseEmbyServersSettings: string;
-    noEmbyServersSettings: string;
+    chooseServersSettings: string;
+    noServersSettings: string;
     serversSaved: string;
     askServersSaved: string;
     /** 預設伺服器比對不到：{missing} {settingsButton} */
@@ -390,9 +389,8 @@ export function buildCatalog(s: CatalogStrings): Catalog {
       deleteWarning: (username, id) => tpl(s.msg.deleteWarning, { username: esc(username), id }),
       chooseDays: s.msg.chooseDays,
       newExpiryLine: (formatted) => tpl(s.msg.newExpiryLine, { date: formatted }),
-      noEmbyQuick: s.msg.noEmbyQuick,
-      chooseEmbyQuick: s.msg.chooseEmbyQuick,
-      pickEmbyVerified: s.msg.pickEmbyVerified,
+      noServersQuick: s.msg.noServersQuick,
+      chooseServersQuick: s.msg.chooseServersQuick,
       pickVerified: s.msg.pickVerified,
       quickMissingLibraries: (missing, settingsButton) =>
         tpl(s.msg.quickMissingLibraries, { missing: join(missing.map(esc)), settingsButton }),
@@ -408,10 +406,10 @@ export function buildCatalog(s: CatalogStrings): Catalog {
       durationSaved: s.msg.durationSaved,
       permissionsToggleOrConfirm: s.msg.permissionsToggleOrConfirm,
       permissionsSaved: s.msg.permissionsSaved,
-      noEmbySettings: s.msg.noEmbySettings,
-      chooseEmbySettings: s.msg.chooseEmbySettings,
-      chooseEmbyServersSettings: s.msg.chooseEmbyServersSettings,
-      noEmbyServersSettings: s.msg.noEmbyServersSettings,
+      noServersLibrarySettings: s.msg.noServersLibrarySettings,
+      chooseLibraryServersSettings: s.msg.chooseLibraryServersSettings,
+      chooseServersSettings: s.msg.chooseServersSettings,
+      noServersSettings: s.msg.noServersSettings,
       serversSaved: s.msg.serversSaved,
       askServersSaved: s.msg.askServersSaved,
       quickMissingServers: (missing, settingsButton) =>

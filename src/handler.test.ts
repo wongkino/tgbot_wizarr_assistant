@@ -402,10 +402,10 @@ describe("回覆鍵盤", () => {
     assert.deepEqual(wizarr.disabled, [12]);
   });
 
-  it("快速邀請直接建立，只用 Emby 與設定的媒體庫", async () => {
+  it("快速邀請直接建立，使用設定的媒體庫", async () => {
     const wizarr = fakeWizarr({
       async listServers() {
-        return [server(1, "Emby", "emby"), server(2, "Plex", "plex")];
+        return [server(1, "Emby", "emby")];
       },
       async listLibraries() {
         return [
@@ -550,16 +550,41 @@ describe("回覆鍵盤", () => {
     assert.match(incompleteCtx.telegram.last().text, /缺少：TV Shows、Documentaries/);
   });
 
-  it("沒有 Emby 時不會建立快速邀請", async () => {
-    const wizarr = fakeWizarr();
+  it("快速邀請列出 Plex 在內的所有已驗證伺服器", async () => {
+    const wizarr = fakeWizarr({
+      async listServers() {
+        return [server(1, "Emby", "emby"), server(2, "Plex", "plex")];
+      },
+      async listLibraries() {
+        return quickLibraryFixtures();
+      },
+    });
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.quickInvite, ctx);
-    assert.match(ctx.telegram.last().text, /沒有已驗證的 Emby/);
+    const text = ctx.telegram.last().text;
+    assert.match(text, /#1<\/b> Emby/);
+    assert.match(text, /#2<\/b> Plex/);
+    await run(serverButton(cat, 1), ctx);
+    await run(serverButton(cat, 2), ctx);
+    await run(B.serversDone, ctx);
+    assert.match(ctx.telegram.last().text, /邀請已建立/);
+    assert.deepEqual(wizarr.created[0]?.serverIds, [1, 2]);
+  });
+
+  it("沒有已驗證的伺服器時不會建立快速邀請", async () => {
+    const wizarr = fakeWizarr({
+      async listServers() {
+        return [];
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.quickInvite, ctx);
+    assert.match(ctx.telegram.last().text, /沒有已驗證的伺服器/);
     assert.equal(wizarr.created.length, 0);
     assert.equal(ctx.telegram.photos.length, 0);
   });
 
-  function embyQuickCtx() {
+  function quickCtx() {
     const wizarr = fakeWizarr({
       async listServers() {
         return [server(1, "Emby", "emby")];
@@ -572,7 +597,7 @@ describe("回覆鍵盤", () => {
   }
 
   it("設定頁可調整快速邀請的預設值", async () => {
-    const ctx = embyQuickCtx();
+    const ctx = quickCtx();
     await run(B.settings, ctx);
     assert.match(ctx.telegram.last().text, /快速邀請設定/);
     assert.match(ctx.telegram.last().text, /邀請連結：7 天/);
@@ -605,7 +630,7 @@ describe("回覆鍵盤", () => {
   });
 
   it("可在設定裡自訂快速邀請的預設媒體庫", async () => {
-    const ctx = embyQuickCtx();
+    const ctx = quickCtx();
     await run(B.settings, ctx);
     await run(B.setLibraries, ctx);
     assert.doesNotMatch(ctx.telegram.last().text, /✅/);
@@ -620,7 +645,7 @@ describe("回覆鍵盤", () => {
   });
 
   it("預設媒體庫可改為全部已啟用的媒體庫", async () => {
-    const ctx = embyQuickCtx();
+    const ctx = quickCtx();
     await run(B.settings, ctx);
     await run(B.setLibraries, ctx);
     await run(B.allLibraries, ctx);
@@ -631,7 +656,7 @@ describe("回覆鍵盤", () => {
   });
 
   it("重設預設會還原快速邀請設定", async () => {
-    const ctx = embyQuickCtx();
+    const ctx = quickCtx();
     await run(B.settings, ctx);
     await run(B.setExpiry, ctx);
     await run(B.expiry30, ctx);
@@ -819,7 +844,7 @@ describe("回覆鍵盤", () => {
     assert.deepEqual(wizarr.created[0]?.serverIds, [1, 2]);
   });
 
-  it("多台 Emby 時快速邀請會列出名稱對照", async () => {
+  it("多台伺服器時快速邀請會列出名稱對照", async () => {
     const wizarr = fakeWizarr({
       async listServers() {
         return [server(1, "Emby 一號", "emby"), server(2, "Emby 二號", "emby")];
@@ -831,7 +856,7 @@ describe("回覆鍵盤", () => {
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.quickInvite, ctx);
     const text = ctx.telegram.last().text;
-    assert.match(text, /選擇 Emby 伺服器/);
+    assert.match(text, /選擇伺服器/);
     assert.match(text, /#1<\/b> Emby 一號/);
     assert.match(text, /#2<\/b> Emby 二號/);
     await run(serverButton(cat, 2), ctx);
@@ -840,7 +865,7 @@ describe("回覆鍵盤", () => {
     assert.deepEqual(wizarr.created[0]?.serverIds, [2]);
   });
 
-  it("快速邀請可複選多台 Emby", async () => {
+  it("快速邀請可複選多台伺服器", async () => {
     const wizarr = fakeWizarr({
       async listServers() {
         return [server(1, "Emby 一號", "emby"), server(2, "Emby 二號", "emby")];
@@ -855,7 +880,7 @@ describe("回覆鍵盤", () => {
     assert.deepEqual(wizarr.created[0]?.serverIds, [1, 2]);
   });
 
-  it("多台 Emby 時設定預設媒體庫會列出名稱對照", async () => {
+  it("多台伺服器時設定預設媒體庫會列出名稱對照", async () => {
     const wizarr = fakeWizarr({
       async listServers() {
         return [server(1, "Emby 一號", "emby"), server(2, "Emby 二號", "emby")];
@@ -868,7 +893,7 @@ describe("回覆鍵盤", () => {
     await run(B.settings, ctx);
     await run(B.setLibraries, ctx);
     const text = ctx.telegram.last().text;
-    assert.match(text, /選擇要設定預設媒體庫的 Emby 伺服器/);
+    assert.match(text, /選擇要設定預設媒體庫的伺服器/);
     assert.match(text, /#1<\/b> Emby 一號/);
     assert.match(text, /#2<\/b> Emby 二號/);
     await run(serverButton(cat, 1), ctx);
@@ -919,7 +944,7 @@ describe("回覆鍵盤", () => {
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.settings, ctx);
     await run(B.setServers, ctx);
-    assert.match(ctx.telegram.last().text, /選擇快速邀請預設的 Emby 伺服器/);
+    assert.match(ctx.telegram.last().text, /選擇快速邀請預設的伺服器/);
     await run(serverButton(cat, 2), ctx);
     await run(B.serversDone, ctx);
     assert.match(ctx.telegram.last().text, /已儲存預設伺服器/);
@@ -959,7 +984,7 @@ describe("回覆鍵盤", () => {
     await run(B.askServersEverytime, ctx);
     assert.match(ctx.telegram.last().text, /已改為每次手動選擇伺服器/);
     await run(B.quickInvite, ctx);
-    assert.match(ctx.telegram.last().text, /選擇 Emby 伺服器/);
+    assert.match(ctx.telegram.last().text, /選擇伺服器/);
   });
 
   it("列出媒體庫時按伺服器分組、不再逐條重複伺服器與 externalId", async () => {

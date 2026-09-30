@@ -163,9 +163,8 @@ export interface Catalog {
     deleteWarning(username: string, id: number): string;
     chooseDays: string;
     newExpiryLine(formatted: string): string;
-    noEmbyQuick: string;
-    chooseEmbyQuick: string;
-    pickEmbyVerified: string;
+    noServersQuick: string;
+    chooseServersQuick: string;
     pickVerified: string;
     quickMissingLibraries(missing: string[], settingsButton: string): string;
     quickReuseTitle: string;
@@ -180,11 +179,11 @@ export interface Catalog {
     durationSaved: string;
     permissionsToggleOrConfirm: string;
     permissionsSaved: string;
-    noEmbySettings: string;
-    chooseEmbySettings: string;
+    noServersLibrarySettings: string;
+    chooseLibraryServersSettings: string;
     /** 預設伺服器的選擇提示。 */
-    chooseEmbyServersSettings: string;
-    noEmbyServersSettings: string;
+    chooseServersSettings: string;
+    noServersSettings: string;
     serversSaved: string;
     askServersSaved: string;
     /** 預設伺服器比對不到：{missing} {settingsButton} */
