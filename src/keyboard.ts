@@ -1,4 +1,5 @@
-import type { InviteDraft, InviteFilter, ReplyMarkup, UserAction } from "./types.ts";
+import type { Catalog } from "./i18n/catalog.ts";
+import type { InviteFilter, PermissionFlags, ReplyMarkup, UserAction } from "./types.ts";
 
 export const PAGE = {
   users: 8,
@@ -7,82 +8,35 @@ export const PAGE = {
   servers: 8,
 } as const;
 
-export const B = {
-  status: "📊 狀態",
-  users: "👥 使用者",
-  invites: "✉️ 邀請",
-  libraries: "📚 媒體庫",
-  servers: "🖥️ 伺服器",
-  help: "❓ 說明",
-  home: "⬅️ 主選單",
-  listUsers: "📋 列出使用者",
-  enableUser: "✅ 啟用使用者",
-  disableUser: "🚫 停用使用者",
-  extendUser: "⏳ 延長到期",
-  deleteUser: "🗑️ 刪除使用者",
-  resetPassword: "🔑 重設密碼",
-  listInvites: "📋 全部邀請",
-  pendingInvites: "⏳ 待使用",
-  usedInvites: "✅ 已使用",
-  expiredInvites: "⌛ 已過期",
-  quickInvite: "⚡ 快速邀請",
-  createInvite: "➕ 建立邀請",
-  deleteInvite: "🗑️ 刪除邀請",
-  listLibraries: "📋 列出媒體庫",
-  listServers: "📋 列出伺服器",
-  confirm: "✅ 確認",
-  cancel: "❌ 取消",
-  prev: "◀️ 上一頁",
-  next: "▶️ 下一頁",
-  expiry1: "連結 1 天",
-  expiry7: "連結 7 天",
-  expiry30: "連結 30 天",
-  expiryNever: "連結不過期",
-  dur7: "帳號 7 天",
-  dur30: "帳號 30 天",
-  dur90: "帳號 90 天",
-  durUnlimited: "帳號無限制",
-  allLibraries: "使用全部媒體庫",
-  pickLibraries: "自訂媒體庫",
-  librariesDone: "媒體庫選好了",
-  nextStep: "➡️ 下一步",
-  toggleDownloads: "切換下載",
-  toggleLive: "切換直播",
-  toggleUploads: "切換上傳",
-  days7: "延長 7 天",
-  days30: "延長 30 天",
-  days90: "延長 90 天",
-} as const;
-
-const INVITE_FILTERS = {
-  [B.listInvites]: "all",
-  [B.pendingInvites]: "pending",
-  [B.usedInvites]: "used",
-  [B.expiredInvites]: "expired",
-} as const satisfies Record<string, InviteFilter>;
-
-const USER_ACTIONS = {
-  [B.enableUser]: "enable",
-  [B.disableUser]: "disable",
-  [B.extendUser]: "extend",
-  [B.deleteUser]: "delete",
-  [B.resetPassword]: "reset",
-} as const satisfies Record<string, UserAction>;
-
-export function inviteFilterOf(text: string): InviteFilter | undefined {
-  if (!Object.hasOwn(INVITE_FILTERS, text)) return undefined;
-  return INVITE_FILTERS[text as keyof typeof INVITE_FILTERS];
+export function inviteFilterOf(cat: Catalog, text: string): InviteFilter | undefined {
+  const b = cat.buttons;
+  const filters: Record<string, InviteFilter> = {
+    [b.listInvites]: "all",
+    [b.pendingInvites]: "pending",
+    [b.usedInvites]: "used",
+    [b.expiredInvites]: "expired",
+  };
+  if (!Object.hasOwn(filters, text)) return undefined;
+  return filters[text];
 }
 
-export function userActionOf(text: string): UserAction | undefined {
-  if (!Object.hasOwn(USER_ACTIONS, text)) return undefined;
-  return USER_ACTIONS[text as keyof typeof USER_ACTIONS];
+export function userActionOf(cat: Catalog, text: string): UserAction | undefined {
+  const b = cat.buttons;
+  const actions: Record<string, UserAction> = {
+    [b.enableUser]: "enable",
+    [b.disableUser]: "disable",
+    [b.extendUser]: "extend",
+    [b.deleteUser]: "delete",
+    [b.resetPassword]: "reset",
+  };
+  if (!Object.hasOwn(actions, text)) return undefined;
+  return actions[text];
 }
 
-export function navRow(page: number, pages: number): string[] {
+export function navRow(cat: Catalog, page: number, pages: number): string[] {
   const nav: string[] = [];
-  if (page > 0) nav.push(B.prev);
-  if (page < pages - 1) nav.push(B.next);
+  if (page > 0) nav.push(cat.buttons.prev);
+  if (page < pages - 1) nav.push(cat.buttons.next);
   return nav;
 }
 
@@ -95,96 +49,113 @@ export function markup(rows: string[][], placeholder?: string): ReplyMarkup {
   };
 }
 
-export function mainKeyboard(): ReplyMarkup {
+export function mainKeyboard(cat: Catalog): ReplyMarkup {
+  const b = cat.buttons;
   return markup(
     [
-      [B.quickInvite],
-      [B.status, B.users],
-      [B.invites, B.libraries],
-      [B.servers, B.help],
+      [b.quickInvite],
+      [b.status, b.users],
+      [b.invites, b.libraries],
+      [b.servers, b.settings],
+      [b.help],
     ],
-    "選擇功能",
+    cat.ph.main,
   );
 }
 
-export function usersKeyboard(): ReplyMarkup {
+export function usersKeyboard(cat: Catalog): ReplyMarkup {
+  const b = cat.buttons;
   return markup(
     [
-      [B.listUsers, B.enableUser],
-      [B.disableUser, B.extendUser],
-      [B.deleteUser, B.resetPassword],
-      [B.home],
+      [b.listUsers, b.enableUser],
+      [b.disableUser, b.extendUser],
+      [b.deleteUser, b.resetPassword],
+      [b.home],
     ],
-    "選擇使用者操作",
+    cat.ph.users,
   );
 }
 
-export function invitesKeyboard(): ReplyMarkup {
+export function invitesKeyboard(cat: Catalog): ReplyMarkup {
+  const b = cat.buttons;
   return markup(
     [
-      [B.quickInvite],
-      [B.listInvites, B.pendingInvites],
-      [B.usedInvites, B.expiredInvites],
-      [B.createInvite, B.deleteInvite],
-      [B.home],
+      [b.quickInvite],
+      [b.listInvites, b.pendingInvites],
+      [b.usedInvites, b.expiredInvites],
+      [b.createInvite, b.deleteInvite],
+      [b.home],
     ],
-    "選擇邀請操作",
+    cat.ph.invites,
   );
 }
 
-export function librariesKeyboard(): ReplyMarkup {
-  return markup([[B.listLibraries], [B.home]], "媒體庫");
+export function librariesKeyboard(cat: Catalog): ReplyMarkup {
+  return markup([[cat.buttons.listLibraries], [cat.buttons.home]], cat.ph.libraries);
 }
 
-export function serversKeyboard(): ReplyMarkup {
-  return markup([[B.listServers], [B.home]], "伺服器");
+export function serversKeyboard(cat: Catalog): ReplyMarkup {
+  return markup([[cat.buttons.listServers], [cat.buttons.home]], cat.ph.servers);
 }
 
-export function confirmKeyboard(): ReplyMarkup {
-  return markup([[B.confirm, B.cancel], [B.home]], "確認或取消");
+export function settingsKeyboard(cat: Catalog): ReplyMarkup {
+  const b = cat.buttons;
+  return markup(
+    [
+      [b.setExpiry, b.setDuration],
+      [b.setPermissions, b.setLibraries],
+      [b.setLanguage, b.resetSettings],
+      [b.home],
+    ],
+    cat.ph.settings,
+  );
+}
+
+export function confirmKeyboard(cat: Catalog): ReplyMarkup {
+  return markup([[cat.buttons.confirm, cat.buttons.cancel], [cat.buttons.home]], cat.ph.confirm);
 }
 
 export function removeKeyboard(): ReplyMarkup {
   return { remove_keyboard: true };
 }
 
-export function withNav(base: ReplyMarkup, page: number, pages: number): ReplyMarkup {
+export function withNav(cat: Catalog, base: ReplyMarkup, page: number, pages: number): ReplyMarkup {
   if (!("keyboard" in base)) return base;
-  const nav = navRow(page, pages);
+  const nav = navRow(cat, page, pages);
   const rows = base.keyboard.map((row) => row.map((button) => button.text));
   return markup(nav.length ? [nav, ...rows] : rows, base.input_field_placeholder);
 }
 
-export function userButton(id: number): string {
-  return labeledButton("使用者", id);
+export function userButton(cat: Catalog, id: number): string {
+  return labeledButton(cat.labels.user, id);
 }
 
-export function serverButton(id: number): string {
-  return labeledButton("伺服器", id);
+export function serverButton(cat: Catalog, id: number): string {
+  return labeledButton(cat.labels.server, id);
 }
 
-export function libraryButton(id: number, selected: boolean): string {
-  return `${selected ? "✅ " : ""}${labeledButton("媒體庫", id)}`;
+export function libraryButton(cat: Catalog, id: number, selected: boolean): string {
+  return `${selected ? "✅ " : ""}${labeledButton(cat.labels.library, id)}`;
 }
 
-export function deleteInviteButton(id: number): string {
-  return labeledButton("刪除邀請", id);
+export function deleteInviteButton(cat: Catalog, id: number): string {
+  return labeledButton(cat.labels.deleteInvite, id);
 }
 
-export function parseUserButton(text: string): number | null {
-  return parseLabeledId("使用者", text);
+export function parseUserButton(cat: Catalog, text: string): number | null {
+  return parseLabeledId(cat.labels.user, text);
 }
 
-export function parseServerButton(text: string): number | null {
-  return parseLabeledId("伺服器", text);
+export function parseServerButton(cat: Catalog, text: string): number | null {
+  return parseLabeledId(cat.labels.server, text);
 }
 
-export function parseLibraryButton(text: string): number | null {
-  return parseId(text, /^(?:✅ )?媒體庫 #(\d+)$/);
+export function parseLibraryButton(cat: Catalog, text: string): number | null {
+  return parseId(text, new RegExp(`^(?:✅ )?${escapeRegExp(cat.labels.library)} #(\\d+)$`));
 }
 
-export function parseDeleteInviteButton(text: string): number | null {
-  return parseLabeledId("刪除邀請", text);
+export function parseDeleteInviteButton(cat: Catalog, text: string): number | null {
+  return parseLabeledId(cat.labels.deleteInvite, text);
 }
 
 function labeledButton(label: string, id: number): string {
@@ -192,23 +163,24 @@ function labeledButton(label: string, id: number): string {
 }
 
 function parseLabeledId(label: string, text: string): number | null {
-  return parseId(text, new RegExp(`^${label} #(\\d+)$`));
+  return parseId(text, new RegExp(`^${escapeRegExp(label)} #(\\d+)$`));
 }
 
-export function permissionKeyboard(draft: InviteDraft): ReplyMarkup {
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function permissionKeyboard(cat: Catalog, flags: PermissionFlags, done: string = cat.buttons.nextStep): ReplyMarkup {
+  const b = cat.buttons;
   return markup(
     [
-      [B.toggleDownloads, B.toggleLive],
-      [B.toggleUploads],
-      [B.nextStep],
-      [B.cancel, B.home],
+      [b.toggleDownloads, b.toggleLive],
+      [b.toggleUploads],
+      [done],
+      [b.cancel, b.home],
     ],
-    `下載${flag(draft.allowDownloads)} · 直播${flag(draft.allowLiveTv)} · 上傳${flag(draft.allowMobileUploads)}`,
+    cat.permissionPlaceholder(flags),
   );
-}
-
-function flag(value: boolean): string {
-  return value ? "開" : "關";
 }
 
 function parseId(text: string, pattern: RegExp): number | null {

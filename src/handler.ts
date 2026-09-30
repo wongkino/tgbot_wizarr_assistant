@@ -1,5 +1,4 @@
 import {
-  actionPrompt,
   esc,
   formatDate,
   formatInviteList,
@@ -7,20 +6,33 @@ import {
   formatLibraries,
   formatLibraryChoices,
   formatPermissions,
+  formatQuickSettings,
   formatServerChoices,
   formatServers,
   formatStatus,
   formatUserList,
-  helpText,
   link,
-  QUICK_LIBRARIES,
   pageWindow,
-  unauthorizedText,
-  welcomeText,
 } from "./format.ts";
+import {
+  catalogFor,
+  DEFAULT_LANG,
+  langFromButton,
+  languageKeyboard,
+  languagePrompt,
+  loadLang,
+  saveLang,
+} from "./i18n.ts";
+import type { Catalog, Lang } from "./i18n.ts";
 import { qrPng } from "./qr.ts";
 import {
-  B,
+  defaultQuickSettings,
+  loadQuickSettings,
+  parseQuickSettings,
+  sameQuickSettings,
+  saveQuickSettings,
+} from "./settings.ts";
+import {
   navRow,
   PAGE,
   confirmKeyboard,
@@ -39,6 +51,7 @@ import {
   removeKeyboard,
   serverButton,
   serversKeyboard,
+  settingsKeyboard,
   userActionOf,
   userButton,
   usersKeyboard,
@@ -53,6 +66,9 @@ import type {
   InviteFilter,
   LibraryInfo,
   PendingAction,
+  PermissionFlags,
+  QuickInviteSettings,
+  QuickLibraryMatcher,
   ReplyMarkup,
   Screen,
   ServerInfo,
@@ -64,6 +80,9 @@ import { WizarrError } from "./wizarr.ts";
 
 const SESSION_TTL_SECONDS = 30 * 60;
 
+/** 單次請求的上下文：加上該使用者的語言目錄。 */
+type Req = AppContext & { cat: Catalog; lang: Lang };
+
 export async function handleUpdate(update: Update, ctx: AppContext): Promise<void> {
   const message = update.message;
   if (!message?.from) return;
@@ -71,30 +90,50 @@ export async function handleUpdate(update: Update, ctx: AppContext): Promise<voi
   const chatId = message.chat.id;
   const userId = message.from.id;
   const text = (message.text ?? "").trim();
+  const storedLang = await loadLang(ctx.sessions, userId);
 
   if (message.chat.type !== "private") {
     if (commandOf(text)) {
-      await send(ctx, chatId, "請在與機器人的私訊中使用。", removeKeyboard());
+      await send(ctx, chatId, catalogFor(storedLang ?? DEFAULT_LANG).msg.privateOnly, removeKeyboard());
     }
     return;
   }
 
   if (!ctx.config.adminIds.has(userId)) {
-    await send(ctx, chatId, unauthorizedText(userId), removeKeyboard());
+    await send(ctx, chatId, catalogFor(storedLang ?? DEFAULT_LANG).unauthorized(userId), removeKeyboard());
     return;
   }
 
+  if (storedLang === null) {
+    try {
+      const picked = langFromButton(text);
+      if (!picked) {
+        await send(ctx, chatId, languagePrompt(), languageKeyboard());
+        return;
+      }
+      await saveLang(ctx.sessions, userId, picked);
+      const cat = catalogFor(picked);
+      await send(ctx, chatId, cat.welcome(), mainKeyboard(cat));
+      await ctx.sessions.set(String(userId), { type: "main" }, SESSION_TTL_SECONDS);
+    } catch (error) {
+      console.error("[bot] 無法回覆", error instanceof Error ? error.message : error);
+    }
+    return;
+  }
+
+  const cat = catalogFor(storedLang);
+  const req: Req = { ...ctx, cat, lang: storedLang };
   const screen = (await ctx.sessions.get(String(userId))) ?? { type: "main" as const };
   try {
-    const next = await dispatch(screen, text, ctx, chatId, userId);
+    const next = await dispatch(screen, text, req, chatId, userId);
     await ctx.sessions.set(String(userId), next, SESSION_TTL_SECONDS);
   } catch (error) {
     if (!(error instanceof WizarrError)) {
       console.error("[bot]", error instanceof Error ? error.message : error);
     }
-    const detail = error instanceof WizarrError ? `Wizarr 錯誤：${esc(error.message)}` : "處理時發生錯誤，請稍後再試。";
+    const detail = error instanceof WizarrError ? cat.msg.wizarrError(esc(error.message)) : cat.msg.genericError;
     try {
-      await send(ctx, chatId, detail, keyboardFor(screen));
+      await send(ctx, chatId, detail, keyboardFor(cat, screen));
     } catch (sendError) {
       console.error("[bot] 無法回覆", sendError instanceof Error ? sendError.message : sendError);
     }
@@ -104,63 +143,55 @@ export async function handleUpdate(update: Update, ctx: AppContext): Promise<voi
 async function dispatch(
   screen: Screen,
   text: string,
-  ctx: AppContext,
+  ctx: Req,
   chatId: number,
   userId: number,
 ): Promise<Screen> {
+  const B = ctx.cat.buttons;
   if (!text) {
-    await send(ctx, chatId, "請使用底部鍵盤。", keyboardFor(screen));
+    await send(ctx, chatId, ctx.cat.msg.useKeyboard, keyboardFor(ctx.cat, screen));
     return screen;
   }
 
   const command = commandOf(text);
   if (command === "start" || command === "menu" || text === B.home) {
-    await send(ctx, chatId, welcomeText(), mainKeyboard());
+    await send(ctx, chatId, ctx.cat.welcome(), mainKeyboard(ctx.cat));
     return { type: "main" };
   }
   if (command === "id") {
-    await send(ctx, chatId, `你的 Telegram ID：<code>${userId}</code>`, keyboardFor(screen));
+    await send(ctx, chatId, ctx.cat.msg.yourId(userId), keyboardFor(ctx.cat, screen));
     return screen;
   }
   if (command === "help" || text === B.help) {
-    await send(ctx, chatId, helpText(), keyboardFor(screen));
+    await send(ctx, chatId, ctx.cat.help(), keyboardFor(ctx.cat, screen));
     return screen;
   }
   if (command === "cancel" || text === B.cancel) {
     const parent = parentOf(screen);
-    await send(ctx, chatId, "已取消。", keyboardFor(parent));
+    await send(ctx, chatId, ctx.cat.msg.cancelled, keyboardFor(ctx.cat, parent));
     return parent;
   }
   if (text === B.status) {
-    await send(ctx, chatId, formatStatus(await ctx.wizarr.getStatus()), keyboardFor(screen));
+    await send(ctx, chatId, formatStatus(ctx.cat, await ctx.wizarr.getStatus()), keyboardFor(ctx.cat, screen));
     return screen;
   }
   if (text === B.users) {
-    await send(
-      ctx,
-      chatId,
-      "選擇使用者操作。可先列出，再點啟用、停用、延長、刪除或重設密碼。",
-      usersKeyboard(),
-    );
+    await send(ctx, chatId, ctx.cat.msg.usersMenu, usersKeyboard(ctx.cat));
     return { type: "users" };
   }
   if (text === B.invites) {
-    await send(
-      ctx,
-      chatId,
-      "選擇邀請操作。快速邀請會直接建立；建立邀請會逐步詢問伺服器、期限、媒體庫與權限。",
-      invitesKeyboard(),
-    );
+    await send(ctx, chatId, ctx.cat.msg.invitesMenu, invitesKeyboard(ctx.cat));
     return { type: "invites" };
   }
   if (text === B.libraries || text === B.listLibraries) return showLibraries(ctx, chatId, 0);
   if (text === B.servers || text === B.listServers) return showServers(ctx, chatId, 0);
   if (text === B.listUsers) return showUserList(ctx, chatId, 0);
+  if (text === B.settings) return showSettings(ctx, chatId);
 
-  const userAction = userActionOf(text);
+  const userAction = userActionOf(ctx.cat, text);
   if (userAction) return beginPickUser(ctx, chatId, userAction, 0);
 
-  const inviteFilter = inviteFilterOf(text);
+  const inviteFilter = inviteFilterOf(ctx.cat, text);
   if (inviteFilter) return showInviteList(ctx, chatId, 0, inviteFilter);
   if (text === B.quickInvite) return beginQuickInvite(ctx, chatId);
   if (text === B.createInvite) return beginCreateInvite(ctx, chatId);
@@ -169,22 +200,22 @@ async function dispatch(
   switch (screen.type) {
     case "user_list":
       if (text === B.prev || text === B.next) {
-        return showUserList(ctx, chatId, shiftPage(screen.page, text));
+        return showUserList(ctx, chatId, shiftPage(B, screen.page, text));
       }
       break;
     case "invite_list":
       if (text === B.prev || text === B.next) {
-        return showInviteList(ctx, chatId, shiftPage(screen.page, text), screen.filter);
+        return showInviteList(ctx, chatId, shiftPage(B, screen.page, text), screen.filter);
       }
       break;
     case "library_list":
       if (text === B.prev || text === B.next) {
-        return showLibraries(ctx, chatId, shiftPage(screen.page, text));
+        return showLibraries(ctx, chatId, shiftPage(B, screen.page, text));
       }
       break;
     case "server_list":
       if (text === B.prev || text === B.next) {
-        return showServers(ctx, chatId, shiftPage(screen.page, text));
+        return showServers(ctx, chatId, shiftPage(B, screen.page, text));
       }
       break;
     case "pick_user":
@@ -207,62 +238,85 @@ async function dispatch(
       return handlePermissions(screen.draft, text, ctx, chatId);
     case "delete_invite_pick":
       return handleDeleteInvitePick(screen.page, text, ctx, chatId);
+    case "settings":
+      return handleSettingsMenu(text, ctx, chatId);
+    case "settings_expiry":
+      return handleSettingsExpiry(text, ctx, chatId);
+    case "settings_duration":
+      return handleSettingsDuration(text, ctx, chatId);
+    case "settings_permissions":
+      return handleSettingsPermissions(screen, text, ctx, chatId);
+    case "settings_library_server":
+      return handleSettingsLibraryServer(text, ctx, chatId);
+    case "settings_library_pick":
+      return handleSettingsLibraryPick(screen, text, ctx, chatId);
+    case "settings_lang":
+      return handleSettingsLang(text, ctx, chatId, userId);
     case "confirm":
       return handleConfirm(screen.pending, text, ctx, chatId);
     default:
       break;
   }
 
-  await send(ctx, chatId, "請使用底部鍵盤。輸入 /help 可看說明。", keyboardFor(screen));
+  await send(ctx, chatId, ctx.cat.msg.useKeyboardHelp, keyboardFor(ctx.cat, screen));
   return screen;
 }
 
-async function showUserList(ctx: AppContext, chatId: number, page: number): Promise<Screen> {
-  const shown = await showList(ctx, chatId, await ctx.wizarr.listUsers(), page, PAGE.users, formatUserList, usersKeyboard());
+async function showUserList(ctx: Req, chatId: number, page: number): Promise<Screen> {
+  const shown = await showList(
+    ctx,
+    chatId,
+    await ctx.wizarr.listUsers(),
+    page,
+    PAGE.users,
+    (view) => formatUserList(ctx.cat, view),
+    usersKeyboard(ctx.cat),
+  );
   return { type: "user_list", page: shown };
 }
 
-async function beginPickUser(ctx: AppContext, chatId: number, action: UserAction, page: number): Promise<Screen> {
+async function beginPickUser(ctx: Req, chatId: number, action: UserAction, page: number): Promise<Screen> {
   const users = await ctx.wizarr.listUsers();
   if (!users.length) {
-    await send(ctx, chatId, "目前沒有使用者。", usersKeyboard());
+    await send(ctx, chatId, ctx.cat.msg.noUsers, usersKeyboard(ctx.cat));
     return { type: "users" };
   }
   return renderPickUser(ctx, chatId, action, users, page);
 }
 
 async function renderPickUser(
-  ctx: AppContext,
+  ctx: Req,
   chatId: number,
   action: UserAction,
   users: UserInfo[],
   page: number,
 ): Promise<Screen> {
   const view = pageWindow(users, page, PAGE.users);
-  await send(ctx, chatId, `${actionPrompt(action)}\n\n${formatUserList(view)}`, pickKeyboard(view));
+  await send(ctx, chatId, `${ctx.cat.actionPrompt(action)}\n\n${formatUserList(ctx.cat, view)}`, pickKeyboard(ctx.cat, view));
   return { type: "pick_user", action, page: view.page };
 }
 
 async function handlePickUser(
   screen: Extract<Screen, { type: "pick_user" }>,
   text: string,
-  ctx: AppContext,
+  ctx: Req,
   chatId: number,
 ): Promise<Screen> {
+  const B = ctx.cat.buttons;
   const users = await ctx.wizarr.listUsers();
   if (text === B.prev || text === B.next) {
-    return renderPickUser(ctx, chatId, screen.action, users, shiftPage(screen.page, text));
+    return renderPickUser(ctx, chatId, screen.action, users, shiftPage(B, screen.page, text));
   }
-  const user = findUser(users, text);
+  const user = findUser(ctx.cat, users, text);
   if (!user) {
     const view = pageWindow(users, screen.page, PAGE.users);
-    await send(ctx, chatId, "找不到這個使用者。請點選按鈕，或輸入正確的 ID / 使用者名稱。", pickKeyboard(view));
+    await send(ctx, chatId, ctx.cat.msg.userNotFound, pickKeyboard(ctx.cat, view));
     return screen;
   }
 
   if (screen.action === "enable") {
     const message = await ctx.wizarr.enableUser(user.id);
-    await send(ctx, chatId, esc(message), usersKeyboard());
+    await send(ctx, chatId, esc(message), usersKeyboard(ctx.cat));
     return { type: "users" };
   }
   if (screen.action === "reset") {
@@ -272,17 +326,17 @@ async function handlePickUser(
       chatId,
       [
         esc(reset.message),
-        `使用者：${esc(user.username)}（#${user.id}）`,
-        `連結：${link(reset.url)}`,
-        `到期：${formatDate(reset.expiresAt)}`,
-        "請只把連結交給這位使用者。",
+        ctx.cat.msg.userLine(user.username, user.id),
+        ctx.cat.msg.linkLine(link(reset.url)),
+        ctx.cat.msg.expiresLine(formatDate(ctx.cat, reset.expiresAt)),
+        ctx.cat.msg.resetShareWarning,
       ].join("\n"),
-      usersKeyboard(),
+      usersKeyboard(ctx.cat),
     );
     return { type: "users" };
   }
   if (screen.action === "extend") {
-    await send(ctx, chatId, `要把 <b>${esc(user.username)}</b>（#${user.id}）延長幾天？`, extendDaysKeyboard());
+    await send(ctx, chatId, ctx.cat.msg.extendDaysPrompt(user.username, user.id), extendDaysKeyboard(ctx.cat));
     return { type: "extend_days", userId: user.id, username: user.username };
   }
 
@@ -292,99 +346,115 @@ async function handlePickUser(
       : { kind: "delete_user", userId: user.id, username: user.username };
   const warning =
     pending.kind === "disable_user"
-      ? `將停用 <b>${esc(user.username)}</b>（#${user.id}）。\n若伺服器不支援停用，Wizarr 會改為刪除這個帳號。`
-      : `將刪除 <b>${esc(user.username)}</b>（#${user.id}）。\n這會從 Wizarr 與媒體伺服器移除帳號。`;
-  await send(ctx, chatId, warning, confirmKeyboard());
+      ? ctx.cat.msg.disableWarning(user.username, user.id)
+      : ctx.cat.msg.deleteWarning(user.username, user.id);
+  await send(ctx, chatId, warning, confirmKeyboard(ctx.cat));
   return { type: "confirm", pending };
 }
 
 async function handleExtendDays(
   screen: Extract<Screen, { type: "extend_days" }>,
   text: string,
-  ctx: AppContext,
+  ctx: Req,
   chatId: number,
 ): Promise<Screen> {
+  const B = ctx.cat.buttons;
   const days = text === B.days7 ? 7 : text === B.days30 ? 30 : text === B.days90 ? 90 : 0;
   if (!days) {
-    await send(ctx, chatId, "請選擇延長天數。", extendDaysKeyboard());
+    await send(ctx, chatId, ctx.cat.msg.chooseDays, extendDaysKeyboard(ctx.cat));
     return screen;
   }
   const result = await ctx.wizarr.extendUser(screen.userId, days);
   await send(
     ctx,
     chatId,
-    `${esc(result.message)}\n新到期日：${formatDate(result.newExpiry)}`,
-    usersKeyboard(),
+    `${esc(result.message)}\n${ctx.cat.msg.newExpiryLine(formatDate(ctx.cat, result.newExpiry))}`,
+    usersKeyboard(ctx.cat),
   );
   return { type: "users" };
 }
 
 async function showInviteList(
-  ctx: AppContext,
+  ctx: Req,
   chatId: number,
   page: number,
   filter: InviteFilter,
 ): Promise<Screen> {
   const invites = (await ctx.wizarr.listInvitations()).filter((invite) => filter === "all" || invite.status === filter);
-  const shown = await showList(ctx, chatId, invites, page, PAGE.invites, (view) => formatInviteList(view, filter), invitesKeyboard());
+  const shown = await showList(
+    ctx,
+    chatId,
+    invites,
+    page,
+    PAGE.invites,
+    (view) => formatInviteList(ctx.cat, view, filter),
+    invitesKeyboard(ctx.cat),
+  );
   for (const invite of pageWindow(invites, shown, PAGE.invites).items) {
     await sendInviteQr(ctx, chatId, invite);
   }
   return { type: "invite_list", page: shown, filter };
 }
 
-async function beginQuickInvite(ctx: AppContext, chatId: number): Promise<Screen> {
+async function beginQuickInvite(ctx: Req, chatId: number): Promise<Screen> {
   const servers = await embyServers(ctx);
   if (!servers.length) {
-    await send(ctx, chatId, "沒有已驗證的 Emby 伺服器，無法建立快速邀請。", invitesKeyboard());
+    await send(ctx, chatId, ctx.cat.msg.noEmbyQuick, invitesKeyboard(ctx.cat));
     return { type: "invites" };
   }
   const only = servers.length === 1 ? servers[0] : undefined;
   if (only) return createQuickInvite(ctx, chatId, only);
-  await send(ctx, chatId, "選擇 Emby 伺服器，選完會立即建立邀請。", serverChoiceKeyboard(servers));
+  await send(ctx, chatId, ctx.cat.msg.chooseEmbyQuick, serverChoiceKeyboard(ctx.cat, servers));
   return { type: "quick_invite_server" };
 }
 
-async function handleQuickInviteServer(text: string, ctx: AppContext, chatId: number): Promise<Screen> {
+async function handleQuickInviteServer(text: string, ctx: Req, chatId: number): Promise<Screen> {
   const servers = await embyServers(ctx);
-  const server = await chosenServer(text, ctx, chatId, servers, "請點選其中一台已驗證的 Emby 伺服器。");
+  const server = await chosenServer(text, ctx, chatId, servers, ctx.cat.msg.pickEmbyVerified);
   if (!server) return { type: "quick_invite_server" };
   return createQuickInvite(ctx, chatId, server);
 }
 
-const QUICK_INVITE_TTL_SECONDS = 8 * 24 * 60 * 60;
-
-async function createQuickInvite(ctx: AppContext, chatId: number, server: ServerInfo): Promise<Screen> {
-  const { selected, missing } = matchQuickLibraries(await enabledLibraries(ctx, server.id));
-  if (missing.length) {
-    await send(
-      ctx,
-      chatId,
-      `這台 Emby 沒有完整的預設媒體庫，無法建立快速邀請。\n缺少：${missing.join("、")}。`,
-      invitesKeyboard(),
-    );
-    return { type: "invites" };
+async function createQuickInvite(ctx: Req, chatId: number, server: ServerInfo): Promise<Screen> {
+  const settings = await loadQuickSettings(ctx.sessions);
+  const enabled = await enabledLibraries(ctx, server.id);
+  let libraryIds: number[];
+  let libraries: string;
+  if (settings.libraries === null) {
+    libraryIds = [];
+    libraries = ctx.cat.librariesLine([ctx.cat.allEnabledLibraries]);
+  } else {
+    const { selected, missing } = matchLibraries(enabled, settings.libraries);
+    if (missing.length) {
+      await send(
+        ctx,
+        chatId,
+        ctx.cat.msg.quickMissingLibraries(missing, ctx.cat.buttons.settings),
+        invitesKeyboard(ctx.cat),
+      );
+      return { type: "invites" };
+    }
+    libraryIds = selected.map((library) => library.id);
+    libraries = ctx.cat.librariesLine(selected.map((library) => library.name));
   }
-  const libraryIds = selected.map((library) => library.id);
-  const libraries = `媒體庫：${selected.map((library) => esc(library.name)).join("、")}`;
   const invites = await ctx.wizarr.listInvitations();
-  const existing = reusableQuickInvite(invites, libraryIds, await savedQuickInvite(ctx, server.id));
+  const existing = reusableQuickInvite(invites, libraryIds, settings, await savedQuickInvite(ctx, server.id));
   if (existing) {
-    await sendCreatedInvitation(ctx, chatId, existing, libraries, "已有相同的快速邀請，沿用這組代碼。");
+    await sendCreatedInvitation(ctx, chatId, existing, libraries, ctx.cat.msg.quickReuseTitle);
     return { type: "invites" };
   }
   const invitation = await ctx.wizarr.createInvitation({
     serverIds: [server.id],
-    expiresInDays: 7,
-    duration: "unlimited",
-    unlimited: true,
+    expiresInDays: settings.expiresInDays,
+    duration: settings.duration,
+    unlimited: settings.unlimited,
     libraryIds,
-    allowDownloads: false,
-    allowLiveTv: false,
-    allowMobileUploads: false,
+    allowDownloads: settings.allowDownloads,
+    allowLiveTv: settings.allowLiveTv,
+    allowMobileUploads: settings.allowMobileUploads,
   });
   try {
-    await rememberQuickInvite(ctx, server.id, invitation.code, libraryIds);
+    await rememberQuickInvite(ctx, server.id, invitation.code, settings, libraryIds);
   } catch (error) {
     console.error("[bot] 無法記住快速邀請", error instanceof Error ? error.message : error);
   }
@@ -395,25 +465,34 @@ async function createQuickInvite(ctx: AppContext, chatId: number, server: Server
 function reusableQuickInvite(
   invites: InvitationInfo[],
   libraryIds: number[],
+  settings: QuickInviteSettings,
   saved: SavedQuickInvite | null,
   now = Date.now(),
 ): InvitationInfo | undefined {
-  if (!saved || !sameIds(saved.libraryIds, libraryIds)) return undefined;
-  return invites.find((invite) => invite.code === saved.code && quickInviteStillOpen(invite, now));
+  if (!saved || !sameQuickSettings(saved.settings, settings) || !sameIds(saved.libraryIds, libraryIds)) {
+    return undefined;
+  }
+  return invites.find((invite) => invite.code === saved.code && inviteReusable(invite, now));
 }
 
-function quickInviteStillOpen(invite: InvitationInfo, now: number): boolean {
+function inviteReusable(invite: InvitationInfo, now: number): boolean {
   if (!invite.unlimited || (invite.status !== "pending" && invite.status !== "used") || !invite.expires) return false;
   const time = Date.parse(invite.expires);
-  return !Number.isNaN(time) && time > now && time <= now + QUICK_INVITE_TTL_SECONDS * 1000;
+  return !Number.isNaN(time) && time > now;
 }
 
-function matchQuickLibraries(libraries: LibraryInfo[]): { selected: LibraryInfo[]; missing: string[] } {
+function matchLibraries(
+  libraries: LibraryInfo[],
+  matchers: QuickLibraryMatcher[],
+): { selected: LibraryInfo[]; missing: string[] } {
   const selected = new Map<number, LibraryInfo>();
   const missing: string[] = [];
-  for (const preset of QUICK_LIBRARIES) {
-    const matches = libraries.filter((library) => library.name === preset.name || library.externalId === preset.externalId);
-    if (!matches.length) missing.push(preset.name);
+  for (const matcher of matchers) {
+    const matches = libraries.filter(
+      (library) =>
+        library.name === matcher.name || (matcher.externalId !== null && library.externalId === matcher.externalId),
+    );
+    if (!matches.length) missing.push(matcher.name);
     for (const library of matches) selected.set(library.id, library);
   }
   return { selected: [...selected.values()].sort((a, b) => a.id - b.id), missing };
@@ -422,9 +501,10 @@ function matchQuickLibraries(libraries: LibraryInfo[]): { selected: LibraryInfo[
 interface SavedQuickInvite {
   code: string;
   libraryIds: number[];
+  settings: QuickInviteSettings;
 }
 
-async function savedQuickInvite(ctx: AppContext, serverId: number): Promise<SavedQuickInvite | null> {
+async function savedQuickInvite(ctx: Req, serverId: number): Promise<SavedQuickInvite | null> {
   const raw = await ctx.sessions.getText(`quick-invite:${serverId}`);
   if (!raw) return null;
   try {
@@ -432,19 +512,27 @@ async function savedQuickInvite(ctx: AppContext, serverId: number): Promise<Save
     if (!parsed || typeof parsed !== "object") return null;
     const code = (parsed as { code?: unknown }).code;
     const libraryIds = (parsed as { libraryIds?: unknown }).libraryIds;
-    if (typeof code !== "string" || !code || !Array.isArray(libraryIds)) return null;
+    const settings = parseQuickSettings((parsed as { settings?: unknown }).settings);
+    if (typeof code !== "string" || !code || !Array.isArray(libraryIds) || !settings) return null;
     const ids = libraryIds.filter((id): id is number => typeof id === "number" && Number.isFinite(id) && id > 0);
     if (ids.length !== libraryIds.length) return null;
-    return { code, libraryIds: ids };
+    return { code, libraryIds: ids, settings };
   } catch {
     return null;
   }
 }
 
-async function rememberQuickInvite(ctx: AppContext, serverId: number, code: string, libraryIds: number[]): Promise<void> {
+async function rememberQuickInvite(
+  ctx: Req,
+  serverId: number,
+  code: string,
+  settings: QuickInviteSettings,
+  libraryIds: number[],
+): Promise<void> {
   if (!code) return;
-  const saved: SavedQuickInvite = { code, libraryIds };
-  await ctx.sessions.setText(`quick-invite:${serverId}`, JSON.stringify(saved), QUICK_INVITE_TTL_SECONDS);
+  const saved: SavedQuickInvite = { code, libraryIds, settings };
+  const ttl = ((settings.expiresInDays ?? 365) + 1) * 24 * 60 * 60;
+  await ctx.sessions.setText(`quick-invite:${serverId}`, JSON.stringify(saved), ttl);
 }
 
 function sameIds(left: number[], right: number[]): boolean {
@@ -458,58 +546,248 @@ function isEmby(server: ServerInfo): boolean {
   return server.serverType.trim().toLowerCase() === "emby";
 }
 
-async function embyServers(ctx: AppContext): Promise<ServerInfo[]> {
+async function embyServers(ctx: Req): Promise<ServerInfo[]> {
   return (await verifiedServers(ctx)).filter(isEmby);
 }
 
-async function verifiedServers(ctx: AppContext): Promise<ServerInfo[]> {
+async function verifiedServers(ctx: Req): Promise<ServerInfo[]> {
   return (await ctx.wizarr.listServers()).filter((server) => server.verified);
 }
 
-async function beginCreateInvite(ctx: AppContext, chatId: number): Promise<Screen> {
+async function showSettings(ctx: Req, chatId: number, notice?: string): Promise<Screen> {
+  const settings = await loadQuickSettings(ctx.sessions);
+  const body = formatQuickSettings(ctx.cat, settings);
+  await send(ctx, chatId, notice ? `${notice}\n\n${body}` : body, settingsKeyboard(ctx.cat));
+  return { type: "settings" };
+}
+
+async function handleSettingsMenu(text: string, ctx: Req, chatId: number): Promise<Screen> {
+  const B = ctx.cat.buttons;
+  if (text === B.setExpiry) {
+    await send(ctx, chatId, ctx.cat.msg.settingsExpiryPrompt, expiryKeyboard(ctx.cat));
+    return { type: "settings_expiry" };
+  }
+  if (text === B.setDuration) {
+    await send(ctx, chatId, ctx.cat.msg.settingsDurationPrompt, durationKeyboard(ctx.cat));
+    return { type: "settings_duration" };
+  }
+  if (text === B.setPermissions) {
+    const settings = await loadQuickSettings(ctx.sessions);
+    const permissions = permissionFlagsOf(settings);
+    await send(
+      ctx,
+      chatId,
+      formatPermissions(ctx.cat, permissions, ctx.cat.permissionsHintConfirm),
+      permissionKeyboard(ctx.cat, permissions, B.confirm),
+    );
+    return { type: "settings_permissions", permissions };
+  }
+  if (text === B.setLibraries) return beginSettingsLibraries(ctx, chatId);
+  if (text === B.setLanguage) {
+    await send(ctx, chatId, ctx.cat.msg.chooseLanguage, languageKeyboard());
+    return { type: "settings_lang" };
+  }
+  if (text === B.resetSettings) {
+    await saveQuickSettings(ctx.sessions, defaultQuickSettings());
+    return showSettings(ctx, chatId, ctx.cat.msg.settingsResetDone);
+  }
+  return showSettings(ctx, chatId, ctx.cat.msg.settingsChooseItem);
+}
+
+async function handleSettingsLang(text: string, ctx: Req, chatId: number, userId: number): Promise<Screen> {
+  const picked = langFromButton(text);
+  if (!picked) {
+    await send(ctx, chatId, languagePrompt(), languageKeyboard());
+    return { type: "settings_lang" };
+  }
+  await saveLang(ctx.sessions, userId, picked);
+  const cat = catalogFor(picked);
+  return showSettings({ ...ctx, cat, lang: picked }, chatId, cat.msg.languageSaved);
+}
+
+async function handleSettingsExpiry(text: string, ctx: Req, chatId: number): Promise<Screen> {
+  const expires = expiryChoice(ctx.cat, text);
+  if (expires === undefined) {
+    await send(ctx, chatId, ctx.cat.msg.chooseExpiry, expiryKeyboard(ctx.cat));
+    return { type: "settings_expiry" };
+  }
+  const settings = await loadQuickSettings(ctx.sessions);
+  await saveQuickSettings(ctx.sessions, { ...settings, expiresInDays: expires });
+  return showSettings(ctx, chatId, ctx.cat.msg.expirySaved);
+}
+
+async function handleSettingsDuration(text: string, ctx: Req, chatId: number): Promise<Screen> {
+  const choice = durationChoice(ctx.cat, text);
+  if (!choice) {
+    await send(ctx, chatId, ctx.cat.msg.chooseDuration, durationKeyboard(ctx.cat));
+    return { type: "settings_duration" };
+  }
+  const settings = await loadQuickSettings(ctx.sessions);
+  await saveQuickSettings(ctx.sessions, { ...settings, duration: choice.duration, unlimited: choice.unlimited });
+  return showSettings(ctx, chatId, ctx.cat.msg.durationSaved);
+}
+
+async function handleSettingsPermissions(
+  screen: Extract<Screen, { type: "settings_permissions" }>,
+  text: string,
+  ctx: Req,
+  chatId: number,
+): Promise<Screen> {
+  const B = ctx.cat.buttons;
+  const toggled = togglePermission(ctx.cat, screen.permissions, text);
+  if (toggled) {
+    await send(
+      ctx,
+      chatId,
+      formatPermissions(ctx.cat, toggled, ctx.cat.permissionsHintConfirm),
+      permissionKeyboard(ctx.cat, toggled, B.confirm),
+    );
+    return { type: "settings_permissions", permissions: toggled };
+  }
+  if (text === B.confirm) {
+    const settings = await loadQuickSettings(ctx.sessions);
+    await saveQuickSettings(ctx.sessions, { ...settings, ...permissionFlagsOf(screen.permissions) });
+    return showSettings(ctx, chatId, ctx.cat.msg.permissionsSaved);
+  }
+  await send(ctx, chatId, ctx.cat.msg.permissionsToggleOrConfirm, permissionKeyboard(ctx.cat, screen.permissions, B.confirm));
+  return screen;
+}
+
+async function beginSettingsLibraries(ctx: Req, chatId: number): Promise<Screen> {
+  const servers = await embyServers(ctx);
+  if (!servers.length) {
+    await send(ctx, chatId, ctx.cat.msg.noEmbySettings, settingsKeyboard(ctx.cat));
+    return { type: "settings" };
+  }
+  if (servers.length === 1) {
+    return renderSettingsLibraryPick(ctx, chatId, servers[0].id, await selectedLibraryIds(ctx, servers[0].id), 0);
+  }
+  await send(ctx, chatId, ctx.cat.msg.chooseEmbySettings, serverChoiceKeyboard(ctx.cat, servers));
+  return { type: "settings_library_server" };
+}
+
+async function handleSettingsLibraryServer(text: string, ctx: Req, chatId: number): Promise<Screen> {
+  const servers = await embyServers(ctx);
+  const server = await chosenServer(text, ctx, chatId, servers, ctx.cat.msg.pickEmbyVerified);
+  if (!server) return { type: "settings_library_server" };
+  return renderSettingsLibraryPick(ctx, chatId, server.id, await selectedLibraryIds(ctx, server.id), 0);
+}
+
+async function selectedLibraryIds(ctx: Req, serverId: number): Promise<number[]> {
+  const settings = await loadQuickSettings(ctx.sessions);
+  if (settings.libraries === null) return [];
+  const enabled = await enabledLibraries(ctx, serverId);
+  return matchLibraries(enabled, settings.libraries).selected.map((library) => library.id);
+}
+
+async function renderSettingsLibraryPick(
+  ctx: Req,
+  chatId: number,
+  serverId: number,
+  selectedIds: number[],
+  page: number,
+  notice?: string,
+): Promise<Screen> {
+  const B = ctx.cat.buttons;
+  const libraries = await enabledLibraries(ctx, serverId);
+  const view = pageWindow(libraries, page, PAGE.libraries);
+  const rows = choiceRows(
+    ctx.cat,
+    view.items.map((library) => libraryButton(ctx.cat, library.id, selectedIds.includes(library.id))),
+    view,
+    [[B.librariesDone, B.allLibraries]],
+  );
+  const body = formatLibraryChoices(ctx.cat, view, selectedIds);
+  await send(ctx, chatId, notice ? `${notice}\n\n${body}` : body, markup(rows, ctx.cat.ph.choosePresetLibrary));
+  return { type: "settings_library_pick", serverId, selectedIds, page: view.page };
+}
+
+async function handleSettingsLibraryPick(
+  screen: Extract<Screen, { type: "settings_library_pick" }>,
+  text: string,
+  ctx: Req,
+  chatId: number,
+): Promise<Screen> {
+  const B = ctx.cat.buttons;
+  const { serverId, selectedIds } = screen;
+  if (text === B.prev || text === B.next) {
+    return renderSettingsLibraryPick(ctx, chatId, serverId, selectedIds, shiftPage(B, screen.page, text));
+  }
+  if (text === B.allLibraries) {
+    const settings = await loadQuickSettings(ctx.sessions);
+    await saveQuickSettings(ctx.sessions, { ...settings, libraries: null });
+    return showSettings(ctx, chatId, ctx.cat.msg.allLibrariesSaved);
+  }
+  if (text === B.librariesDone) {
+    if (!selectedIds.length) {
+      return renderSettingsLibraryPick(ctx, chatId, serverId, selectedIds, screen.page, ctx.cat.msg.pickOneLibrary);
+    }
+    const enabled = await enabledLibraries(ctx, serverId);
+    const libraries: QuickLibraryMatcher[] = selectedIds.map((id) => {
+      const library = enabled.find((item) => item.id === id);
+      return { name: library?.name ?? ctx.cat.msg.libraryFallbackName(id), externalId: library?.externalId ?? null };
+    });
+    const settings = await loadQuickSettings(ctx.sessions);
+    await saveQuickSettings(ctx.sessions, { ...settings, libraries });
+    return showSettings(ctx, chatId, ctx.cat.msg.librariesSaved);
+  }
+  const libraryId = parseLibraryButton(ctx.cat, text);
+  const enabled = await enabledLibraries(ctx, serverId);
+  const library = libraryId == null ? undefined : enabled.find((item) => item.id === libraryId);
+  if (!library) {
+    return renderSettingsLibraryPick(ctx, chatId, serverId, selectedIds, screen.page, ctx.cat.msg.pickOneLibrary);
+  }
+  const next = selectedIds.includes(library.id)
+    ? selectedIds.filter((id) => id !== library.id)
+    : [...selectedIds, library.id].sort((a, b) => a - b);
+  return renderSettingsLibraryPick(ctx, chatId, serverId, next, screen.page);
+}
+
+async function beginCreateInvite(ctx: Req, chatId: number): Promise<Screen> {
   const servers = await verifiedServers(ctx);
   if (!servers.length) {
-    await send(ctx, chatId, "沒有已驗證的伺服器，無法建立邀請。", invitesKeyboard());
+    await send(ctx, chatId, ctx.cat.msg.noServers, invitesKeyboard(ctx.cat));
     return { type: "invites" };
   }
-  await send(ctx, chatId, formatServerChoices(servers), serverChoiceKeyboard(servers));
+  await send(ctx, chatId, formatServerChoices(ctx.cat, servers), serverChoiceKeyboard(ctx.cat, servers));
   return { type: "invite_server" };
 }
 
-async function handleInviteServer(text: string, ctx: AppContext, chatId: number): Promise<Screen> {
+async function handleInviteServer(text: string, ctx: Req, chatId: number): Promise<Screen> {
   const servers = await verifiedServers(ctx);
-  const server = await chosenServer(text, ctx, chatId, servers, "請點選其中一台已驗證的伺服器。");
+  const server = await chosenServer(text, ctx, chatId, servers, ctx.cat.msg.pickVerified);
   if (!server) return { type: "invite_server" };
   const draft = emptyDraft();
   draft.serverId = server.id;
   draft.serverName = server.name;
-  await send(ctx, chatId, `伺服器：<b>${esc(server.name)}</b>\n邀請連結多久後失效？`, expiryKeyboard());
+  await send(ctx, chatId, ctx.cat.msg.inviteServerExpiryPrompt(server.name), expiryKeyboard(ctx.cat));
   return { type: "invite_expiry", draft };
 }
 
-async function handleInviteExpiry(draft: InviteDraft, text: string, ctx: AppContext, chatId: number): Promise<Screen> {
-  const expires = expiryChoice(text);
+async function handleInviteExpiry(draft: InviteDraft, text: string, ctx: Req, chatId: number): Promise<Screen> {
+  const expires = expiryChoice(ctx.cat, text);
   if (expires === undefined) {
-    await send(ctx, chatId, "請選擇邀請連結的有效期。", expiryKeyboard());
+    await send(ctx, chatId, ctx.cat.msg.chooseExpiry, expiryKeyboard(ctx.cat));
     return { type: "invite_expiry", draft };
   }
   const next = { ...draft, expiresInDays: expires };
-  await send(ctx, chatId, "受邀使用者的帳號可以使用多久？", durationKeyboard());
+  await send(ctx, chatId, ctx.cat.msg.inviteDurationPrompt, durationKeyboard(ctx.cat));
   return { type: "invite_duration", draft: next };
 }
 
-async function handleInviteDuration(draft: InviteDraft, text: string, ctx: AppContext, chatId: number): Promise<Screen> {
-  const choice = durationChoice(text);
+async function handleInviteDuration(draft: InviteDraft, text: string, ctx: Req, chatId: number): Promise<Screen> {
+  const choice = durationChoice(ctx.cat, text);
   if (!choice) {
-    await send(ctx, chatId, "請選擇帳號使用期限。", durationKeyboard());
+    await send(ctx, chatId, ctx.cat.msg.chooseDuration, durationKeyboard(ctx.cat));
     return { type: "invite_duration", draft };
   }
   const next = { ...draft, duration: choice.duration, unlimited: choice.unlimited };
-  await send(ctx, chatId, "要開放哪些媒體庫？", libraryModeKeyboard());
+  await send(ctx, chatId, ctx.cat.msg.libraryModePrompt, libraryModeKeyboard(ctx.cat));
   return { type: "invite_library_mode", draft: next };
 }
 
-async function handleLibraryMode(draft: InviteDraft, text: string, ctx: AppContext, chatId: number): Promise<Screen> {
+async function handleLibraryMode(draft: InviteDraft, text: string, ctx: Req, chatId: number): Promise<Screen> {
+  const B = ctx.cat.buttons;
   if (text === B.allLibraries) return showPermissions(ctx, chatId, allLibraries(draft));
   if (text === B.pickLibraries) {
     const libraries = await enabledLibraries(ctx, draft.serverId);
@@ -518,41 +796,42 @@ async function handleLibraryMode(draft: InviteDraft, text: string, ctx: AppConte
       await send(
         ctx,
         chatId,
-        `這台伺服器沒有已啟用的媒體庫，將改用全部可用範圍。\n\n${formatPermissions(next)}`,
-        permissionKeyboard(next),
+        `${ctx.cat.msg.noLibrariesFallback}\n\n${formatPermissions(ctx.cat, next)}`,
+        permissionKeyboard(ctx.cat, next),
       );
       return { type: "invite_permissions", draft: next };
     }
     return renderLibraryPick(ctx, chatId, { ...draft, useAllLibraries: false }, 0, libraries);
   }
-  await send(ctx, chatId, "請選擇全部媒體庫或自訂媒體庫。", libraryModeKeyboard());
+  await send(ctx, chatId, ctx.cat.msg.chooseLibraryMode, libraryModeKeyboard(ctx.cat));
   return { type: "invite_library_mode", draft };
 }
 
 async function handleLibraryPick(
   screen: Extract<Screen, { type: "invite_library_pick" }>,
   text: string,
-  ctx: AppContext,
+  ctx: Req,
   chatId: number,
 ): Promise<Screen> {
+  const B = ctx.cat.buttons;
   const libraries = await enabledLibraries(ctx, screen.draft.serverId);
   if (text === B.prev || text === B.next) {
-    return renderLibraryPick(ctx, chatId, screen.draft, shiftPage(screen.page, text), libraries);
+    return renderLibraryPick(ctx, chatId, screen.draft, shiftPage(B, screen.page, text), libraries);
   }
   if (text === B.allLibraries) {
     return showPermissions(ctx, chatId, allLibraries(screen.draft));
   }
   if (text === B.librariesDone) {
     if (!screen.draft.libraryIds.length) {
-      return renderLibraryPick(ctx, chatId, screen.draft, screen.page, libraries, "請至少選一個媒體庫，或改用全部媒體庫。");
+      return renderLibraryPick(ctx, chatId, screen.draft, screen.page, libraries, ctx.cat.msg.pickOneLibrary);
     }
     return showPermissions(ctx, chatId, { ...screen.draft, useAllLibraries: false });
   }
 
-  const libraryId = parseLibraryButton(text);
+  const libraryId = parseLibraryButton(ctx.cat, text);
   const library = libraryId == null ? undefined : libraries.find((item) => item.id === libraryId);
   if (!library) {
-    return renderLibraryPick(ctx, chatId, screen.draft, screen.page, libraries, "請點選媒體庫、選好了，或改用全部媒體庫。");
+    return renderLibraryPick(ctx, chatId, screen.draft, screen.page, libraries, ctx.cat.msg.pickOneLibrary);
   }
 
   const selected = new Map(screen.draft.libraryIds.map((id, index) => [id, screen.draft.libraryNames[index] ?? library.name]));
@@ -569,113 +848,122 @@ async function handleLibraryPick(
 }
 
 async function renderLibraryPick(
-  ctx: AppContext,
+  ctx: Req,
   chatId: number,
   draft: InviteDraft,
   page: number,
   libraries: LibraryInfo[],
   notice?: string,
 ): Promise<Screen> {
+  const B = ctx.cat.buttons;
   const view = pageWindow(libraries, page, PAGE.libraries);
   const rows = choiceRows(
-    view.items.map((library) => libraryButton(library.id, draft.libraryIds.includes(library.id))),
+    ctx.cat,
+    view.items.map((library) => libraryButton(ctx.cat, library.id, draft.libraryIds.includes(library.id))),
     view,
     [[B.librariesDone, B.allLibraries]],
   );
-  const body = formatLibraryChoices(view, draft.libraryIds);
-  await send(ctx, chatId, notice ? `${notice}\n\n${body}` : body, markup(rows, "選擇媒體庫"));
+  const body = formatLibraryChoices(ctx.cat, view, draft.libraryIds);
+  await send(ctx, chatId, notice ? `${notice}\n\n${body}` : body, markup(rows, ctx.cat.ph.chooseLibrary));
   return { type: "invite_library_pick", draft, page: view.page };
 }
 
-async function handlePermissions(draft: InviteDraft, text: string, ctx: AppContext, chatId: number): Promise<Screen> {
-  if (text === B.toggleDownloads || text === B.toggleLive || text === B.toggleUploads) {
-    const next: InviteDraft = {
-      ...draft,
-      allowDownloads: text === B.toggleDownloads ? !draft.allowDownloads : draft.allowDownloads,
-      allowLiveTv: text === B.toggleLive ? !draft.allowLiveTv : draft.allowLiveTv,
-      allowMobileUploads: text === B.toggleUploads ? !draft.allowMobileUploads : draft.allowMobileUploads,
-    };
-    return showPermissions(ctx, chatId, next);
-  }
+async function handlePermissions(draft: InviteDraft, text: string, ctx: Req, chatId: number): Promise<Screen> {
+  const B = ctx.cat.buttons;
+  const toggled = togglePermission(ctx.cat, draft, text);
+  if (toggled) return showPermissions(ctx, chatId, { ...draft, ...toggled });
   if (text === B.nextStep) return askCreateConfirm(ctx, chatId, draft);
-  await send(ctx, chatId, "請切換權限，或按下一步。", permissionKeyboard(draft));
+  await send(ctx, chatId, ctx.cat.msg.permissionsToggleOrNext, permissionKeyboard(ctx.cat, draft));
   return { type: "invite_permissions", draft };
 }
 
-async function showPermissions(ctx: AppContext, chatId: number, draft: InviteDraft): Promise<Screen> {
-  await send(ctx, chatId, formatPermissions(draft), permissionKeyboard(draft));
+function togglePermission(cat: Catalog, flags: PermissionFlags, text: string): PermissionFlags | null {
+  const B = cat.buttons;
+  if (text === B.toggleDownloads) return { ...flags, allowDownloads: !flags.allowDownloads };
+  if (text === B.toggleLive) return { ...flags, allowLiveTv: !flags.allowLiveTv };
+  if (text === B.toggleUploads) return { ...flags, allowMobileUploads: !flags.allowMobileUploads };
+  return null;
+}
+
+function permissionFlagsOf(flags: PermissionFlags): PermissionFlags {
+  return {
+    allowDownloads: flags.allowDownloads,
+    allowLiveTv: flags.allowLiveTv,
+    allowMobileUploads: flags.allowMobileUploads,
+  };
+}
+
+async function showPermissions(ctx: Req, chatId: number, draft: InviteDraft): Promise<Screen> {
+  await send(ctx, chatId, formatPermissions(ctx.cat, draft), permissionKeyboard(ctx.cat, draft));
   return { type: "invite_permissions", draft };
 }
 
-async function askCreateConfirm(ctx: AppContext, chatId: number, draft: InviteDraft): Promise<Screen> {
+async function askCreateConfirm(ctx: Req, chatId: number, draft: InviteDraft): Promise<Screen> {
   const input = toInvitationInput(draft);
   if (!input) {
-    await send(ctx, chatId, "邀請資料不完整，請重新建立。", invitesKeyboard());
+    await send(ctx, chatId, ctx.cat.msg.draftIncomplete, invitesKeyboard(ctx.cat));
     return { type: "invites" };
   }
-  await send(ctx, chatId, formatInviteSummary(draft), confirmKeyboard());
+  await send(ctx, chatId, formatInviteSummary(ctx.cat, draft), confirmKeyboard(ctx.cat));
   return { type: "confirm", pending: { kind: "create_invite", input, serverName: draft.serverName ?? "" } };
 }
 
-async function beginDeleteInvite(ctx: AppContext, chatId: number, page: number): Promise<Screen> {
+async function beginDeleteInvite(ctx: Req, chatId: number, page: number): Promise<Screen> {
   const invites = (await ctx.wizarr.listInvitations()).filter(
     (invite) => invite.status === "pending" || invite.status === "expired",
   );
   if (!invites.length) {
-    await send(ctx, chatId, "沒有可刪除的待使用或已過期邀請。", invitesKeyboard());
+    await send(ctx, chatId, ctx.cat.msg.noDeletableInvites, invitesKeyboard(ctx.cat));
     return { type: "invites" };
   }
   const view = pageWindow(invites, page, PAGE.invites);
   const rows = choiceRows(
-    view.items.map((invite) => deleteInviteButton(invite.id)),
+    ctx.cat,
+    view.items.map((invite) => deleteInviteButton(ctx.cat, invite.id)),
     view,
   );
   await send(
     ctx,
     chatId,
-    `選擇要刪除的邀請。\n\n${formatInviteList(view, "all")}`,
-    markup(rows, "選擇邀請"),
+    `${ctx.cat.msg.chooseInviteToDelete}\n\n${formatInviteList(ctx.cat, view, "all")}`,
+    markup(rows, ctx.cat.ph.chooseInvite),
   );
   return { type: "delete_invite_pick", page: view.page };
 }
 
-async function handleDeleteInvitePick(page: number, text: string, ctx: AppContext, chatId: number): Promise<Screen> {
-  if (text === B.prev || text === B.next) return beginDeleteInvite(ctx, chatId, shiftPage(page, text));
-  const invitationId = parseDeleteInviteButton(text);
+async function handleDeleteInvitePick(page: number, text: string, ctx: Req, chatId: number): Promise<Screen> {
+  const B = ctx.cat.buttons;
+  if (text === B.prev || text === B.next) return beginDeleteInvite(ctx, chatId, shiftPage(B, page, text));
+  const invitationId = parseDeleteInviteButton(ctx.cat, text);
   const invites = await ctx.wizarr.listInvitations();
   const invite = invitationId == null ? undefined : invites.find((item) => item.id === invitationId);
   if (!invite) {
-    await send(ctx, chatId, "找不到這個邀請，請重新選擇。");
+    await send(ctx, chatId, ctx.cat.msg.inviteNotFound);
     return beginDeleteInvite(ctx, chatId, page);
   }
-  await send(
-    ctx,
-    chatId,
-    `將刪除邀請 <code>${esc(invite.code)}</code>（#${invite.id}）。\n這不會移除已經建立的媒體帳號。`,
-    confirmKeyboard(),
-  );
+  await send(ctx, chatId, ctx.cat.msg.deleteInviteWarning(invite.code, invite.id), confirmKeyboard(ctx.cat));
   return { type: "confirm", pending: { kind: "delete_invite", invitationId: invite.id, code: invite.code } };
 }
 
-async function handleConfirm(pending: PendingAction, text: string, ctx: AppContext, chatId: number): Promise<Screen> {
-  if (text !== B.confirm) {
-    await send(ctx, chatId, "請按確認或取消。", confirmKeyboard());
+async function handleConfirm(pending: PendingAction, text: string, ctx: Req, chatId: number): Promise<Screen> {
+  if (text !== ctx.cat.buttons.confirm) {
+    await send(ctx, chatId, ctx.cat.msg.confirmOrCancel, confirmKeyboard(ctx.cat));
     return { type: "confirm", pending };
   }
 
   if (pending.kind === "disable_user") {
     const message = await ctx.wizarr.disableUser(pending.userId);
-    await send(ctx, chatId, esc(message), usersKeyboard());
+    await send(ctx, chatId, esc(message), usersKeyboard(ctx.cat));
     return { type: "users" };
   }
   if (pending.kind === "delete_user") {
     const message = await ctx.wizarr.deleteUser(pending.userId);
-    await send(ctx, chatId, esc(message), usersKeyboard());
+    await send(ctx, chatId, esc(message), usersKeyboard(ctx.cat));
     return { type: "users" };
   }
   if (pending.kind === "delete_invite") {
     const message = await ctx.wizarr.deleteInvitation(pending.invitationId);
-    await send(ctx, chatId, esc(message), invitesKeyboard());
+    await send(ctx, chatId, esc(message), invitesKeyboard(ctx.cat));
     return { type: "invites" };
   }
 
@@ -685,43 +973,59 @@ async function handleConfirm(pending: PendingAction, text: string, ctx: AppConte
 }
 
 async function sendCreatedInvitation(
-  ctx: AppContext,
+  ctx: Req,
   chatId: number,
   invitation: { code: string; url: string },
   detail?: string,
-  title = "邀請已建立。",
+  title = ctx.cat.msg.inviteCreatedTitle,
 ): Promise<void> {
-  const lines = [title, inviteCaption(invitation)];
+  const lines = [title, inviteCaption(ctx.cat, invitation)];
   if (detail) lines.push(detail);
-  await send(ctx, chatId, lines.join("\n"), invitesKeyboard());
+  await send(ctx, chatId, lines.join("\n"), invitesKeyboard(ctx.cat));
   await sendInviteQr(ctx, chatId, invitation);
 }
 
 async function sendInviteQr(
-  ctx: AppContext,
+  ctx: Req,
   chatId: number,
   invitation: { code: string; url: string },
 ): Promise<void> {
   if (!/^https?:\/\//i.test(invitation.url)) return;
-  await ctx.telegram.sendPhoto(chatId, await qrPng(invitation.url), inviteCaption(invitation));
+  await ctx.telegram.sendPhoto(chatId, await qrPng(invitation.url), inviteCaption(ctx.cat, invitation));
 }
 
-function inviteCaption(invitation: { code: string; url: string }): string {
-  return `代碼：<code>${esc(invitation.code)}</code>\n${link(invitation.url)}`;
+function inviteCaption(cat: Catalog, invitation: { code: string; url: string }): string {
+  return cat.msg.inviteCaption(invitation.code, invitation.url);
 }
 
-async function showLibraries(ctx: AppContext, chatId: number, page: number): Promise<Screen> {
-  const shown = await showList(ctx, chatId, await ctx.wizarr.listLibraries(), page, PAGE.libraries, formatLibraries, librariesKeyboard());
+async function showLibraries(ctx: Req, chatId: number, page: number): Promise<Screen> {
+  const shown = await showList(
+    ctx,
+    chatId,
+    await ctx.wizarr.listLibraries(),
+    page,
+    PAGE.libraries,
+    (view) => formatLibraries(ctx.cat, view),
+    librariesKeyboard(ctx.cat),
+  );
   return { type: "library_list", page: shown };
 }
 
-async function showServers(ctx: AppContext, chatId: number, page: number): Promise<Screen> {
-  const shown = await showList(ctx, chatId, await ctx.wizarr.listServers(), page, PAGE.servers, formatServers, serversKeyboard());
+async function showServers(ctx: Req, chatId: number, page: number): Promise<Screen> {
+  const shown = await showList(
+    ctx,
+    chatId,
+    await ctx.wizarr.listServers(),
+    page,
+    PAGE.servers,
+    (view) => formatServers(ctx.cat, view),
+    serversKeyboard(ctx.cat),
+  );
   return { type: "server_list", page: shown };
 }
 
 async function showList<T>(
-  ctx: AppContext,
+  ctx: Req,
   chatId: number,
   items: T[],
   page: number,
@@ -730,17 +1034,17 @@ async function showList<T>(
   keyboard: ReplyMarkup,
 ): Promise<number> {
   const view = pageWindow(items, page, size);
-  await send(ctx, chatId, format(view), withNav(keyboard, view.page, view.pages));
+  await send(ctx, chatId, format(view), withNav(ctx.cat, keyboard, view.page, view.pages));
   return view.page;
 }
 
-async function enabledLibraries(ctx: AppContext, serverId: number | undefined): Promise<LibraryInfo[]> {
+async function enabledLibraries(ctx: Req, serverId: number | undefined): Promise<LibraryInfo[]> {
   const libraries = await ctx.wizarr.listLibraries();
   return libraries.filter((library) => library.enabled && library.serverId === serverId);
 }
 
-function findUser(users: UserInfo[], text: string): UserInfo | undefined {
-  const buttonId = parseUserButton(text);
+function findUser(cat: Catalog, users: UserInfo[], text: string): UserInfo | undefined {
+  const buttonId = parseUserButton(cat, text);
   if (buttonId != null) return users.find((user) => user.id === buttonId);
   if (/^\d+$/.test(text)) return users.find((user) => user.id === Number(text));
   const lowered = text.toLowerCase();
@@ -765,34 +1069,35 @@ function toInvitationInput(draft: InviteDraft): CreateInvitationInput | null {
 
 async function chosenServer(
   text: string,
-  ctx: AppContext,
+  ctx: Req,
   chatId: number,
   servers: ServerInfo[],
   miss: string,
 ): Promise<ServerInfo | undefined> {
-  const serverId = parseServerButton(text);
+  const serverId = parseServerButton(ctx.cat, text);
   const server = serverId == null ? undefined : servers.find((item) => item.id === serverId);
   if (server) return server;
-  await send(ctx, chatId, miss, serverChoiceKeyboard(servers));
+  await send(ctx, chatId, miss, serverChoiceKeyboard(ctx.cat, servers));
   return undefined;
 }
 
-function extendDaysKeyboard(): ReplyMarkup {
-  return markup(withCancel([B.days7, B.days30, B.days90]), "選擇天數");
+function extendDaysKeyboard(cat: Catalog): ReplyMarkup {
+  const B = cat.buttons;
+  return markup(withCancel(cat, [B.days7, B.days30, B.days90]), cat.ph.chooseDays);
 }
 
 function allLibraries(draft: InviteDraft): InviteDraft {
   return { ...draft, useAllLibraries: true, libraryIds: [], libraryNames: [] };
 }
 
-function withCancel(...rows: string[][]): string[][] {
-  return [...rows, [B.cancel, B.home]];
+function withCancel(cat: Catalog, ...rows: string[][]): string[][] {
+  return [...rows, [cat.buttons.cancel, cat.buttons.home]];
 }
 
-function choiceRows(labels: string[], view?: { page: number; pages: number }, beforeCancel: string[][] = []): string[][] {
+function choiceRows(cat: Catalog, labels: string[], view?: { page: number; pages: number }, beforeCancel: string[][] = []): string[][] {
   const rows = labels.map((text) => [text]);
-  if (view) appendNav(rows, view.page, view.pages);
-  return withCancel(...rows, ...beforeCancel);
+  if (view) appendNav(cat, rows, view.page, view.pages);
+  return withCancel(cat, ...rows, ...beforeCancel);
 }
 
 function emptyDraft(): InviteDraft {
@@ -805,7 +1110,8 @@ function emptyDraft(): InviteDraft {
   };
 }
 
-function expiryChoice(text: string): 1 | 7 | 30 | null | undefined {
+function expiryChoice(cat: Catalog, text: string): 1 | 7 | 30 | null | undefined {
+  const B = cat.buttons;
   if (text === B.expiry1) return 1;
   if (text === B.expiry7) return 7;
   if (text === B.expiry30) return 30;
@@ -813,7 +1119,8 @@ function expiryChoice(text: string): 1 | 7 | 30 | null | undefined {
   return undefined;
 }
 
-function durationChoice(text: string): { duration: string; unlimited: boolean } | null {
+function durationChoice(cat: Catalog, text: string): { duration: string; unlimited: boolean } | null {
+  const B = cat.buttons;
   if (text === B.dur7) return { duration: "7", unlimited: false };
   if (text === B.dur30) return { duration: "30", unlimited: false };
   if (text === B.dur90) return { duration: "90", unlimited: false };
@@ -821,32 +1128,35 @@ function durationChoice(text: string): { duration: string; unlimited: boolean } 
   return null;
 }
 
-function expiryKeyboard(): ReplyMarkup {
-  return markup(withCancel([B.expiry1, B.expiry7], [B.expiry30, B.expiryNever]), "邀請連結有效期");
+function expiryKeyboard(cat: Catalog): ReplyMarkup {
+  const B = cat.buttons;
+  return markup(withCancel(cat, [B.expiry1, B.expiry7], [B.expiry30, B.expiryNever]), cat.ph.expiry);
 }
 
-function durationKeyboard(): ReplyMarkup {
-  return markup(withCancel([B.dur7, B.dur30], [B.dur90, B.durUnlimited]), "帳號使用期限");
+function durationKeyboard(cat: Catalog): ReplyMarkup {
+  const B = cat.buttons;
+  return markup(withCancel(cat, [B.dur7, B.dur30], [B.dur90, B.durUnlimited]), cat.ph.duration);
 }
 
-function libraryModeKeyboard(): ReplyMarkup {
-  return markup(withCancel([B.allLibraries], [B.pickLibraries]), "選擇媒體庫");
+function libraryModeKeyboard(cat: Catalog): ReplyMarkup {
+  const B = cat.buttons;
+  return markup(withCancel(cat, [B.allLibraries], [B.pickLibraries]), cat.ph.libraryMode);
 }
 
-function serverChoiceKeyboard(servers: ServerInfo[]): ReplyMarkup {
-  return markup(choiceRows(servers.map((server) => serverButton(server.id))), "選擇伺服器");
+function serverChoiceKeyboard(cat: Catalog, servers: ServerInfo[]): ReplyMarkup {
+  return markup(choiceRows(cat, servers.map((server) => serverButton(cat, server.id))), cat.ph.chooseServer);
 }
 
-function pickKeyboard(view: { page: number; pages: number; items: UserInfo[] }): ReplyMarkup {
-  return markup(choiceRows(view.items.map((user) => userButton(user.id)), view), "輸入 ID 或使用者名稱");
+function pickKeyboard(cat: Catalog, view: { page: number; pages: number; items: UserInfo[] }): ReplyMarkup {
+  return markup(choiceRows(cat, view.items.map((user) => userButton(cat, user.id)), view), cat.ph.pickUser);
 }
 
-function appendNav(rows: string[][], page: number, pages: number): void {
-  const nav = navRow(page, pages);
+function appendNav(cat: Catalog, rows: string[][], page: number, pages: number): void {
+  const nav = navRow(cat, page, pages);
   if (nav.length) rows.push(nav);
 }
 
-function shiftPage(page: number, text: string): number {
+function shiftPage(B: Catalog["buttons"], page: number, text: string): number {
   return text === B.next ? page + 1 : page - 1;
 }
 
@@ -860,19 +1170,22 @@ function pendingParent(pending: PendingAction): Screen {
   return { type: "users" };
 }
 
-function keyboardFor(screen: Screen): ReplyMarkup {
-  if (screen.type === "confirm") return confirmKeyboard();
+function keyboardFor(cat: Catalog, screen: Screen): ReplyMarkup {
+  if (screen.type === "confirm") return confirmKeyboard(cat);
+  if (screen.type === "settings") return settingsKeyboard(cat);
   switch (parentOf(screen).type) {
     case "users":
-      return usersKeyboard();
+      return usersKeyboard(cat);
     case "invites":
-      return invitesKeyboard();
+      return invitesKeyboard(cat);
     case "libraries":
-      return librariesKeyboard();
+      return librariesKeyboard(cat);
     case "servers":
-      return serversKeyboard();
+      return serversKeyboard(cat);
+    case "settings":
+      return settingsKeyboard(cat);
     default:
-      return mainKeyboard();
+      return mainKeyboard(cat);
   }
 }
 

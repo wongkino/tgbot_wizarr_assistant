@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { handleUpdate } from "./handler.ts";
-import { B, deleteInviteButton, libraryButton, serverButton, userButton } from "./keyboard.ts";
+import { catalogFor } from "./i18n.ts";
+import { deleteInviteButton, libraryButton, serverButton, userButton } from "./keyboard.ts";
 import { MemorySessionStore } from "./session.ts";
 import type {
   AppConfig,
@@ -13,6 +14,9 @@ import type {
   WizarrApi,
 } from "./types.ts";
 import { WizarrError } from "./wizarr.ts";
+
+const cat = catalogFor("zh-TW");
+const B = cat.buttons;
 
 const config: AppConfig = {
   telegramToken: "token",
@@ -218,6 +222,9 @@ function fakeWizarr(overrides: Partial<WizarrApi> = {}): WizarrApi & { created: 
 }
 
 async function run(text: string, ctx: { wizarr: WizarrApi; telegram: Recorder; sessions: MemorySessionStore }, userId = 7) {
+  if (!(await ctx.sessions.getText(`lang:${userId}`))) {
+    await ctx.sessions.setText(`lang:${userId}`, "zh-TW", 3600);
+  }
   await handleUpdate(message(text, userId), {
     config: userId === 7 ? config : { ...config, adminIds: new Set([7]) },
     wizarr: ctx.wizarr,
@@ -230,6 +237,8 @@ describe("授權", () => {
   it("未授權的人只會收到自己的 ID", async () => {
     let called = false;
     const telegram = new Recorder();
+    const sessions = new MemorySessionStore();
+    await sessions.setText("lang:99", "zh-TW", 3600);
     await handleUpdate(message("/start", 99), {
       config,
       wizarr: fakeWizarr({
@@ -239,11 +248,23 @@ describe("授權", () => {
         },
       }),
       telegram,
-      sessions: new MemorySessionStore(),
+      sessions,
     });
     assert.equal(called, false);
     assert.match(telegram.last().text, /99/);
     assert.match(telegram.last().text, /未獲授權/);
+  });
+
+  it("未授權且未選語言時預設用英文", async () => {
+    const telegram = new Recorder();
+    await handleUpdate(message("/start", 99), {
+      config,
+      wizarr: fakeWizarr(),
+      telegram,
+      sessions: new MemorySessionStore(),
+    });
+    assert.match(telegram.last().text, /not authorized/);
+    assert.match(telegram.last().text, /99/);
   });
 
   it("群組裡的一般訊息不會回覆", async () => {
@@ -255,6 +276,79 @@ describe("授權", () => {
       sessions: new MemorySessionStore(),
     });
     assert.equal(telegram.messages.length, 0);
+  });
+});
+
+describe("語言", () => {
+  function rawCtx(wizarr: WizarrApi = fakeWizarr()) {
+    return { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+  }
+
+  async function runRaw(text: string, ctx: ReturnType<typeof rawCtx>) {
+    await handleUpdate(message(text), {
+      config,
+      wizarr: ctx.wizarr,
+      telegram: ctx.telegram,
+      sessions: ctx.sessions,
+    });
+  }
+
+  it("初次使用要先選語言", async () => {
+    const ctx = rawCtx();
+    await runRaw("/start", ctx);
+    assert.match(ctx.telegram.last().text, /choose your language/);
+    for (const label of ["English", "繁體中文", "简体中文", "日本語"]) {
+      assert.ok(ctx.telegram.buttons().includes(label), label);
+    }
+    await runRaw("隨便打字", ctx);
+    assert.match(ctx.telegram.last().text, /choose your language/);
+  });
+
+  it("選完語言後用該語言顯示主選單", async () => {
+    const ctx = rawCtx();
+    await runRaw("/start", ctx);
+    await runRaw("English", ctx);
+    assert.match(ctx.telegram.last().text, /Wizarr Assistant/);
+    const en = catalogFor("en").buttons;
+    assert.ok(ctx.telegram.buttons().includes(en.status));
+    await runRaw(en.status, ctx);
+    assert.match(ctx.telegram.last().text, /Users: 2/);
+  });
+
+  it("設定裡可切換語言，切換後立即生效", async () => {
+    const ctx = rawCtx();
+    await run(B.settings, ctx);
+    assert.match(ctx.telegram.last().text, /快速邀請設定/);
+    await run(B.setLanguage, ctx);
+    assert.ok(ctx.telegram.buttons().includes("日本語"));
+    await run("English", ctx);
+    assert.match(ctx.telegram.last().text, /Language switched to English/);
+    assert.match(ctx.telegram.last().text, /Quick invite settings/);
+    const en = catalogFor("en").buttons;
+    await run(en.settings, ctx);
+    assert.match(ctx.telegram.last().text, /Quick invite settings/);
+    await run(en.setLanguage, ctx);
+    await run("繁體中文", ctx);
+    assert.match(ctx.telegram.last().text, /語言已切換為繁體中文/);
+    assert.match(ctx.telegram.last().text, /快速邀請設定/);
+  });
+
+  it("切換語言後快速邀請照常運作", async () => {
+    const wizarr = fakeWizarr({
+      async listServers() {
+        return [server(1, "Emby", "emby")];
+      },
+      async listLibraries() {
+        return quickLibraryFixtures();
+      },
+    });
+    const ctx = rawCtx(wizarr);
+    await runRaw("English", ctx);
+    const en = catalogFor("en").buttons;
+    await runRaw(en.quickInvite, ctx);
+    assert.match(ctx.telegram.last().text, /Invite created/);
+    assert.match(ctx.telegram.last().text, /Libraries: 電影, 動畫-已完結, 電視, 動畫-連載中/);
+    assert.equal(wizarr.created.length, 1);
   });
 });
 
@@ -296,13 +390,13 @@ describe("回覆鍵盤", () => {
     const wizarr = fakeWizarr();
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.disableUser, ctx);
-    await run(userButton(12), ctx);
+    await run(userButton(cat, 12), ctx);
     assert.match(ctx.telegram.last().text, /改為刪除/);
     assert.deepEqual(wizarr.disabled, []);
     await run(B.cancel, ctx);
     assert.deepEqual(wizarr.disabled, []);
     await run(B.disableUser, ctx);
-    await run(userButton(12), ctx);
+    await run(userButton(cat, 12), ctx);
     await run(B.confirm, ctx);
     assert.deepEqual(wizarr.disabled, [12]);
   });
@@ -446,15 +540,144 @@ describe("回覆鍵盤", () => {
     assert.equal(ctx.telegram.photos.length, 0);
   });
 
+  function embyQuickCtx() {
+    const wizarr = fakeWizarr({
+      async listServers() {
+        return [server(1, "Emby", "emby")];
+      },
+      async listLibraries() {
+        return quickLibraryFixtures();
+      },
+    });
+    return { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+  }
+
+  it("設定頁可調整快速邀請的預設值", async () => {
+    const ctx = embyQuickCtx();
+    await run(B.settings, ctx);
+    assert.match(ctx.telegram.last().text, /快速邀請設定/);
+    assert.match(ctx.telegram.last().text, /邀請連結：7 天/);
+    assert.match(ctx.telegram.last().text, /帳號期限：無限制/);
+    await run(B.setExpiry, ctx);
+    await run(B.expiry30, ctx);
+    assert.match(ctx.telegram.last().text, /已儲存連結有效期/);
+    assert.match(ctx.telegram.last().text, /邀請連結：30 天/);
+    await run(B.setDuration, ctx);
+    await run(B.dur30, ctx);
+    assert.match(ctx.telegram.last().text, /帳號期限：30 天/);
+    await run(B.setPermissions, ctx);
+    await run(B.toggleDownloads, ctx);
+    assert.match(ctx.telegram.last().text, /下載：是/);
+    await run(B.confirm, ctx);
+    assert.match(ctx.telegram.last().text, /已儲存權限/);
+    await run(B.quickInvite, ctx);
+    assert.deepEqual(ctx.wizarr.created, [
+      {
+        serverIds: [1],
+        expiresInDays: 30,
+        duration: "30",
+        unlimited: false,
+        libraryIds: [3, 12, 13, 14],
+        allowDownloads: true,
+        allowLiveTv: false,
+        allowMobileUploads: false,
+      },
+    ]);
+  });
+
+  it("可在設定裡自訂快速邀請的預設媒體庫", async () => {
+    const ctx = embyQuickCtx();
+    await run(B.settings, ctx);
+    await run(B.setLibraries, ctx);
+    assert.match(ctx.telegram.last().text, /✅/);
+    await run(libraryButton(cat, 3, true), ctx);
+    await run(B.librariesDone, ctx);
+    assert.match(ctx.telegram.last().text, /已儲存預設媒體庫/);
+    assert.doesNotMatch(ctx.telegram.last().text, /電影/);
+    await run(B.quickInvite, ctx);
+    assert.deepEqual(ctx.wizarr.created[0]?.libraryIds, [12, 13, 14]);
+  });
+
+  it("預設媒體庫可改為全部已啟用的媒體庫", async () => {
+    const ctx = embyQuickCtx();
+    await run(B.settings, ctx);
+    await run(B.setLibraries, ctx);
+    await run(B.allLibraries, ctx);
+    assert.match(ctx.telegram.last().text, /已改用全部已啟用的媒體庫/);
+    await run(B.quickInvite, ctx);
+    assert.deepEqual(ctx.wizarr.created[0]?.libraryIds, []);
+    assert.match(ctx.telegram.last().text, /媒體庫：全部已啟用的媒體庫/);
+  });
+
+  it("重設預設會還原快速邀請設定", async () => {
+    const ctx = embyQuickCtx();
+    await run(B.settings, ctx);
+    await run(B.setExpiry, ctx);
+    await run(B.expiry30, ctx);
+    assert.match(ctx.telegram.last().text, /邀請連結：30 天/);
+    await run(B.resetSettings, ctx);
+    assert.match(ctx.telegram.last().text, /已重設為預設值/);
+    assert.match(ctx.telegram.last().text, /邀請連結：7 天/);
+    await run(B.quickInvite, ctx);
+    assert.equal(ctx.wizarr.created[0]?.expiresInDays, 7);
+  });
+
+  it("更改設定後不會沿用舊的快速邀請", async () => {
+    const invites: Awaited<ReturnType<WizarrApi["listInvitations"]>> = [];
+    const created: CreateInvitationInput[] = [];
+    const wizarr = fakeWizarr({
+      async listServers() {
+        return [server(1, "Emby", "emby")];
+      },
+      async listLibraries() {
+        return quickLibraryFixtures();
+      },
+      async listInvitations() {
+        return invites;
+      },
+      async createInvitation(input) {
+        created.push(input);
+        const invite = {
+          id: 9 + created.length,
+          code: `CODE${created.length}`,
+          url: `https://wizarr.example/j/CODE${created.length}`,
+          status: "pending",
+          created: null,
+          expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          usedAt: null,
+          usedBy: null,
+          duration: input.duration,
+          unlimited: input.unlimited,
+          libraryIds: input.libraryIds,
+          serverNames: ["Emby"],
+        };
+        invites.push(invite);
+        return invite;
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.quickInvite, ctx);
+    await run(B.quickInvite, ctx);
+    assert.equal(created.length, 1);
+    assert.match(ctx.telegram.last().text, /沿用這組代碼/);
+    await run(B.settings, ctx);
+    await run(B.setExpiry, ctx);
+    await run(B.expiry30, ctx);
+    await run(B.quickInvite, ctx);
+    assert.equal(created.length, 2);
+    assert.equal(created[1]?.expiresInDays, 30);
+    assert.match(ctx.telegram.last().text, /CODE2/);
+  });
+
   it("可逐步建立邀請並限制媒體庫", async () => {
     const wizarr = fakeWizarr();
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.createInvite, ctx);
-    await run(serverButton(1), ctx);
+    await run(serverButton(cat, 1), ctx);
     await run(B.expiry7, ctx);
     await run(B.durUnlimited, ctx);
     await run(B.pickLibraries, ctx);
-    await run(libraryButton(3, false), ctx);
+    await run(libraryButton(cat, 3, false), ctx);
     assert.match(ctx.telegram.last().text, /✅/);
     await run(B.librariesDone, ctx);
     await run(B.toggleDownloads, ctx);
@@ -498,7 +721,7 @@ describe("回覆鍵盤", () => {
     });
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.deleteInvite, ctx);
-    await run(deleteInviteButton(8), ctx);
+    await run(deleteInviteButton(cat, 8), ctx);
     assert.equal(deleted, 0);
     await run(B.confirm, ctx);
     assert.equal(deleted, 1);

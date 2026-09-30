@@ -61,6 +61,24 @@ export interface CreateInvitationInput {
   allowMobileUploads: boolean;
 }
 
+export interface PermissionFlags {
+  allowDownloads: boolean;
+  allowLiveTv: boolean;
+  allowMobileUploads: boolean;
+}
+
+export interface QuickLibraryMatcher {
+  name: string;
+  externalId: string | null;
+}
+
+export interface QuickInviteSettings extends PermissionFlags {
+  expiresInDays: 1 | 7 | 30 | null;
+  duration: string;
+  unlimited: boolean;
+  libraries: QuickLibraryMatcher[] | null;
+}
+
 export interface PasswordResetInfo {
   message: string;
   url: string;
@@ -130,7 +148,7 @@ export type UserAction = "enable" | "disable" | "extend" | "delete" | "reset";
 
 export type InviteFilter = "all" | "pending" | "used" | "expired";
 
-export interface InviteDraft {
+export interface InviteDraft extends PermissionFlags {
   serverId?: number;
   serverName?: string;
   expiresInDays?: 1 | 7 | 30 | null;
@@ -139,9 +157,6 @@ export interface InviteDraft {
   useAllLibraries?: boolean;
   libraryIds: number[];
   libraryNames: string[];
-  allowDownloads: boolean;
-  allowLiveTv: boolean;
-  allowMobileUploads: boolean;
 }
 
 export type PendingAction =
@@ -170,6 +185,13 @@ export type Screen =
   | { type: "invite_library_pick"; draft: InviteDraft; page: number }
   | { type: "invite_permissions"; draft: InviteDraft }
   | { type: "delete_invite_pick"; page: number }
+  | { type: "settings" }
+  | { type: "settings_expiry" }
+  | { type: "settings_duration" }
+  | { type: "settings_permissions"; permissions: PermissionFlags }
+  | { type: "settings_library_server" }
+  | { type: "settings_library_pick"; serverId: number; selectedIds: number[]; page: number }
+  | { type: "settings_lang" }
   | { type: "confirm"; pending: PendingAction };
 
 export interface SessionStore {

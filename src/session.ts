@@ -20,8 +20,15 @@ export const SCREEN_PARENT = {
   library_list: "libraries",
   servers: "servers",
   server_list: "servers",
+  settings: "main",
+  settings_expiry: "settings",
+  settings_duration: "settings",
+  settings_permissions: "settings",
+  settings_library_server: "settings",
+  settings_library_pick: "settings",
+  settings_lang: "settings",
   confirm: "main",
-} as const satisfies Record<Screen["type"], "main" | "users" | "invites" | "libraries" | "servers">;
+} as const satisfies Record<Screen["type"], "main" | "users" | "invites" | "libraries" | "servers" | "settings">;
 
 const SCREEN_TYPES = new Set<Screen["type"]>(Object.keys(SCREEN_PARENT) as Screen["type"][]);
 const INVITE_FILTERS = new Set(["all", "pending", "used", "expired"]);
@@ -39,6 +46,11 @@ export function isScreen(value: unknown): value is Screen {
     case "servers":
     case "invite_server":
     case "quick_invite_server":
+    case "settings":
+    case "settings_expiry":
+    case "settings_duration":
+    case "settings_library_server":
+    case "settings_lang":
       return true;
     case "user_list":
     case "library_list":
@@ -58,6 +70,10 @@ export function isScreen(value: unknown): value is Screen {
       return isDraft(record.draft);
     case "invite_library_pick":
       return isNumber(record.page) && isDraft(record.draft);
+    case "settings_permissions":
+      return isPermissionFlags(record.permissions);
+    case "settings_library_pick":
+      return isNumber(record.serverId) && Array.isArray(record.selectedIds) && isNumber(record.page);
     case "confirm":
       return isPending(record.pending);
     default:
@@ -172,9 +188,17 @@ function isDraft(value: unknown): boolean {
     draft &&
       Array.isArray(draft.libraryIds) &&
       Array.isArray(draft.libraryNames) &&
-      typeof draft.allowDownloads === "boolean" &&
-      typeof draft.allowLiveTv === "boolean" &&
-      typeof draft.allowMobileUploads === "boolean",
+      isPermissionFlags(draft),
+  );
+}
+
+function isPermissionFlags(value: unknown): boolean {
+  const flags = asRecord(value);
+  return Boolean(
+    flags &&
+      typeof flags.allowDownloads === "boolean" &&
+      typeof flags.allowLiveTv === "boolean" &&
+      typeof flags.allowMobileUploads === "boolean",
   );
 }
 
