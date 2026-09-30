@@ -5,6 +5,7 @@ import { handleUpdate } from "./handler.ts";
 import { catalogFor } from "./i18n.ts";
 import { deleteInviteButton, libraryButton, serverButton, userButton } from "./keyboard.ts";
 import { MemorySessionStore } from "./session.ts";
+import { defaultQuickSettings, saveQuickSettings } from "./settings.ts";
 import type {
   AppConfig,
   CreateInvitationInput,
@@ -74,10 +75,10 @@ class Recorder {
 
 function quickLibraryFixtures() {
   return [
-    library(3, "電影", "4"),
-    library(12, "動畫-已完結", "611380"),
-    library(13, "電視", "4761"),
-    library(14, "動畫-連載中", "598899"),
+    library(3, "Movies", "mov"),
+    library(12, "Anime", "ani"),
+    library(13, "TV Shows", "tv"),
+    library(14, "Documentaries", "doc"),
   ];
 }
 
@@ -347,7 +348,7 @@ describe("語言", () => {
     const en = catalogFor("en").buttons;
     await runRaw(en.quickInvite, ctx);
     assert.match(ctx.telegram.last().text, /Invite created/);
-    assert.match(ctx.telegram.last().text, /Libraries: 電影, 動畫-已完結, 電視, 動畫-連載中/);
+    assert.match(ctx.telegram.last().text, /Libraries: All enabled libraries/);
     assert.equal(wizarr.created.length, 1);
   });
 });
@@ -401,28 +402,37 @@ describe("回覆鍵盤", () => {
     assert.deepEqual(wizarr.disabled, [12]);
   });
 
-  it("快速邀請直接建立，只用 Emby 與預設媒體庫", async () => {
+  it("快速邀請直接建立，只用 Emby 與設定的媒體庫", async () => {
     const wizarr = fakeWizarr({
       async listServers() {
         return [server(1, "Emby", "emby"), server(2, "Plex", "plex")];
       },
       async listLibraries() {
         return [
-          library(3, "電影", "4"),
-          library(8, "收藏集", "4746"),
-          library(9, "JAV", "620168"),
-          library(11, "泡麵番", "190001"),
-          library(12, "動畫-已完結", "611380"),
-          library(13, "電視", "4761"),
-          library(14, "動畫-連載中", "598899"),
+          library(3, "Movies", "mov"),
+          library(8, "Collections", "col"),
+          library(9, "Music Videos", "mv"),
+          library(11, "Shorts", "short"),
+          library(12, "Anime", "ani"),
+          library(13, "TV Shows", "tv"),
+          library(14, "Documentaries", "doc"),
         ];
       },
     });
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await saveQuickSettings(ctx.sessions, {
+      ...defaultQuickSettings(),
+      libraries: [
+        { name: "Movies", externalId: "mov" },
+        { name: "Anime", externalId: "ani" },
+        { name: "TV Shows", externalId: "tv" },
+        { name: "Documentaries", externalId: "doc" },
+      ],
+    });
     await run(B.quickInvite, ctx);
     assert.match(ctx.telegram.last().text, /邀請已建立/);
-    assert.match(ctx.telegram.last().text, /媒體庫：電影、動畫-已完結、電視、動畫-連載中/);
-    assert.doesNotMatch(ctx.telegram.last().text, /JAV|泡麵番|收藏集/);
+    assert.match(ctx.telegram.last().text, /媒體庫：Movies、Anime、TV Shows、Documentaries/);
+    assert.doesNotMatch(ctx.telegram.last().text, /Music Videos|Shorts|Collections/);
     assert.deepEqual(wizarr.created, [
       {
         serverIds: [1],
@@ -485,7 +495,7 @@ describe("回覆鍵盤", () => {
     assert.match(ctx.telegram.last().text, /NEW1/);
   });
 
-  it("沒有到期時間或缺少預設媒體庫時不會沿用或建立", async () => {
+  it("沒有到期時間或缺少設定的媒體庫時不會沿用或建立", async () => {
     const openEnded = fakeWizarr({
       async listServers() {
         return [server(1, "Emby", "emby")];
@@ -522,13 +532,22 @@ describe("回覆鍵盤", () => {
         return [server(1, "Emby", "emby")];
       },
       async listLibraries() {
-        return [library(3, "電影", "4"), library(12, "動畫-已完結", "611380")];
+        return [library(3, "Movies", "mov"), library(12, "Anime", "ani")];
       },
     });
     const incompleteCtx = { wizarr: incomplete, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await saveQuickSettings(incompleteCtx.sessions, {
+      ...defaultQuickSettings(),
+      libraries: [
+        { name: "Movies", externalId: "mov" },
+        { name: "Anime", externalId: "ani" },
+        { name: "TV Shows", externalId: "tv" },
+        { name: "Documentaries", externalId: "doc" },
+      ],
+    });
     await run(B.quickInvite, incompleteCtx);
     assert.equal(incomplete.created.length, 0);
-    assert.match(incompleteCtx.telegram.last().text, /缺少：動畫-連載中、電視/);
+    assert.match(incompleteCtx.telegram.last().text, /缺少：TV Shows、Documentaries/);
   });
 
   it("沒有 Emby 時不會建立快速邀請", async () => {
@@ -577,7 +596,7 @@ describe("回覆鍵盤", () => {
         expiresInDays: 30,
         duration: "30",
         unlimited: false,
-        libraryIds: [3, 12, 13, 14],
+        libraryIds: [],
         allowDownloads: true,
         allowLiveTv: false,
         allowMobileUploads: false,
@@ -589,13 +608,15 @@ describe("回覆鍵盤", () => {
     const ctx = embyQuickCtx();
     await run(B.settings, ctx);
     await run(B.setLibraries, ctx);
+    assert.doesNotMatch(ctx.telegram.last().text, /✅/);
+    await run(libraryButton(cat, 3, false), ctx);
     assert.match(ctx.telegram.last().text, /✅/);
-    await run(libraryButton(cat, 3, true), ctx);
+    await run(libraryButton(cat, 12, false), ctx);
     await run(B.librariesDone, ctx);
     assert.match(ctx.telegram.last().text, /已儲存預設媒體庫/);
-    assert.doesNotMatch(ctx.telegram.last().text, /電影/);
+    assert.match(ctx.telegram.last().text, /媒體庫：Movies、Anime/);
     await run(B.quickInvite, ctx);
-    assert.deepEqual(ctx.wizarr.created[0]?.libraryIds, [12, 13, 14]);
+    assert.deepEqual(ctx.wizarr.created[0]?.libraryIds, [3, 12]);
   });
 
   it("預設媒體庫可改為全部已啟用的媒體庫", async () => {

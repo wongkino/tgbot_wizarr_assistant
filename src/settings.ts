@@ -1,12 +1,5 @@
 import type { QuickInviteSettings, QuickLibraryMatcher, SessionStore } from "./types.ts";
 
-export const DEFAULT_QUICK_LIBRARIES: QuickLibraryMatcher[] = [
-  { name: "動畫-已完結", externalId: "611380" },
-  { name: "動畫-連載中", externalId: "598899" },
-  { name: "電影", externalId: "4" },
-  { name: "電視", externalId: "4761" },
-];
-
 const SETTINGS_KEY = "settings:quick-invite";
 const SETTINGS_TTL_SECONDS = 365 * 24 * 60 * 60;
 const EXPIRY_DAYS = new Set([1, 7, 30]);
@@ -19,7 +12,7 @@ export function defaultQuickSettings(): QuickInviteSettings {
     allowDownloads: false,
     allowLiveTv: false,
     allowMobileUploads: false,
-    libraries: DEFAULT_QUICK_LIBRARIES.map((matcher) => ({ ...matcher })),
+    libraries: null,
   };
 }
 

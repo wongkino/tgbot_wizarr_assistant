@@ -39,15 +39,21 @@ describe("快速邀請設定", () => {
   });
 
   it("sameQuickSettings 對媒體庫順序不敏感", () => {
-    const a = defaultQuickSettings();
-    const b = { ...defaultQuickSettings(), libraries: [...a.libraries!].reverse() };
+    const a = {
+      ...defaultQuickSettings(),
+      libraries: [
+        { name: "Movies", externalId: "mov" },
+        { name: "Anime", externalId: "ani" },
+      ],
+    };
+    const b = { ...a, libraries: [...a.libraries].reverse() };
     assert.equal(sameQuickSettings(a, b), true);
     assert.equal(sameQuickSettings(a, { ...a, expiresInDays: 30 }), false);
     assert.equal(sameQuickSettings(a, { ...a, unlimited: false }), false);
     assert.equal(sameQuickSettings(a, { ...a, allowDownloads: true }), false);
     assert.equal(sameQuickSettings(a, { ...a, libraries: null }), false);
     assert.equal(
-      sameQuickSettings(a, { ...a, libraries: [...a.libraries!, { name: "音樂", externalId: null }] }),
+      sameQuickSettings(a, { ...a, libraries: [...a.libraries, { name: "Music", externalId: null }] }),
       false,
     );
   });
@@ -55,8 +61,8 @@ describe("快速邀請設定", () => {
   it("parseQuickSettings 拒絕無效的媒體庫比對器", () => {
     const settings = defaultQuickSettings();
     assert.equal(parseQuickSettings({ ...settings, libraries: [{ name: "", externalId: null }] }), null);
-    assert.equal(parseQuickSettings({ ...settings, libraries: [{ name: "電影", externalId: 4 }] }), null);
-    assert.equal(parseQuickSettings({ ...settings, libraries: "全部" }), null);
+    assert.equal(parseQuickSettings({ ...settings, libraries: [{ name: "Movies", externalId: 4 }] }), null);
+    assert.equal(parseQuickSettings({ ...settings, libraries: "all" }), null);
     assert.equal(parseQuickSettings({ ...settings, expiresInDays: 8 }), null);
     const parsed = parseQuickSettings(JSON.parse(JSON.stringify(settings)));
     assert.deepEqual(parsed, settings);
