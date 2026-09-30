@@ -1,14 +1,21 @@
 services:
   wizarr-bot:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    image: tgbot-wizarr-assistant:local
+    image: ghcr.io/wongkino/tgbot_wizarr_assistant:latest
+    # To build from source instead, comment out the image line above and use:
+    # 要從原始碼本地建置時，註解掉上面的 image，改用：
+    # 要从源代码本地构建时，注释掉上面的 image，改用：
+    # ソースからローカルでビルドする場合は、上の image をコメントアウトして次を使用：
+    # build:
+    #   context: ..
+    #   dockerfile: docker/Dockerfile
     restart: unless-stopped
     env_file:
       - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Polling needs no inbound ports. Uncomment when switching to webhook.
     # polling 不需要對外開放。改用 webhook 時再取消註解。
+    # polling 不需要对外开放。改用 webhook 时再取消注释。
+    # polling では外部公開ポートは不要です。webhook に変える場合はコメントを解除してください。
     # ports:
     #   - "8080:8080"

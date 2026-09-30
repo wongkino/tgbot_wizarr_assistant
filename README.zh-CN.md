@@ -42,8 +42,10 @@ Wizarr 在局域网内时用这个方式。容器已加入 `host.docker.internal
 
 ```bash
 cp docker/.env.example docker/.env
-docker compose -f docker/docker-compose.yml up -d --build
+docker compose -f docker/docker-compose.yml up -d
 ```
+
+这会拉取预建的 `linux/amd64` 镜像 `ghcr.io/wongkino/tgbot_wizarr_assistant:latest`（由 repo 的 **docker** GitHub Action 手动构建发布）。若套件设为 private，请先 `docker login ghcr.io`。要改从源代码构建，改用 `docker/docker-compose.yml` 里注释的 `build:` 设置，并执行 `up -d --build`。
 
 `MODE=polling` 时不需要对外端口。Telegram 会由容器主动连线。
 

@@ -42,8 +42,10 @@ Use this when Wizarr is on a LAN. The container includes `host.docker.internal`,
 
 ```bash
 cp docker/.env.example docker/.env
-docker compose -f docker/docker-compose.yml up -d --build
+docker compose -f docker/docker-compose.yml up -d
 ```
+
+This pulls the prebuilt `linux/amd64` image `ghcr.io/wongkino/tgbot_wizarr_assistant:latest`, published manually via the repo's **docker** GitHub Action. If the package is private, run `docker login ghcr.io` first. To build from source instead, switch to the commented `build:` lines in `docker/docker-compose.yml` and run `up -d --build`.
 
 With `MODE=polling` no inbound ports are needed; the container connects out to Telegram.
 

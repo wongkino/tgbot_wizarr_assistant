@@ -42,8 +42,10 @@ Wizarr が LAN 内にある場合はこちらを使います。コンテナに�
 
 ```bash
 cp docker/.env.example docker/.env
-docker compose -f docker/docker-compose.yml up -d --build
+docker compose -f docker/docker-compose.yml up -d
 ```
+
+これは手動の **docker** GitHub Action でビルドされた `linux/amd64` イメージ `ghcr.io/wongkino/tgbot_wizarr_assistant:latest` を pull します。パッケージが private の場合は先に `docker login ghcr.io` を実行してください。ソースからビルドする場合は `docker/docker-compose.yml` のコメントアウトされた `build:` 設定に切り替え、`up -d --build` を実行します。
 
 `MODE=polling` の場合、外部に開放するポートは不要です。コンテナから Telegram に能動的に接続します。
 
