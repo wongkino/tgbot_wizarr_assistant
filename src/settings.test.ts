@@ -24,6 +24,7 @@ describe("快速邀請設定", () => {
       duration: "30",
       unlimited: false,
       allowDownloads: true,
+      serverIds: [1, 2],
       libraries: null,
     };
     await saveQuickSettings(store, settings);
@@ -52,6 +53,10 @@ describe("快速邀請設定", () => {
     assert.equal(sameQuickSettings(a, { ...a, unlimited: false }), false);
     assert.equal(sameQuickSettings(a, { ...a, allowDownloads: true }), false);
     assert.equal(sameQuickSettings(a, { ...a, libraries: null }), false);
+    const withServers = { ...a, serverIds: [2, 1] };
+    assert.equal(sameQuickSettings(withServers, { ...a, serverIds: [1, 2] }), true);
+    assert.equal(sameQuickSettings(withServers, { ...a, serverIds: [1] }), false);
+    assert.equal(sameQuickSettings(withServers, { ...a, serverIds: null }), false);
     assert.equal(
       sameQuickSettings(a, { ...a, libraries: [...a.libraries, { name: "Music", externalId: null }] }),
       false,
@@ -64,7 +69,16 @@ describe("快速邀請設定", () => {
     assert.equal(parseQuickSettings({ ...settings, libraries: [{ name: "Movies", externalId: 4 }] }), null);
     assert.equal(parseQuickSettings({ ...settings, libraries: "all" }), null);
     assert.equal(parseQuickSettings({ ...settings, expiresInDays: 8 }), null);
+    assert.equal(parseQuickSettings({ ...settings, serverIds: [0] }), null);
+    assert.equal(parseQuickSettings({ ...settings, serverIds: "all" }), null);
     const parsed = parseQuickSettings(JSON.parse(JSON.stringify(settings)));
     assert.deepEqual(parsed, settings);
+  });
+
+  it("舊版設定沒有 serverIds 欄位也能解析", () => {
+    const settings = { ...defaultQuickSettings(), serverIds: [1, 2] };
+    const legacy = JSON.parse(JSON.stringify(settings)) as Record<string, unknown>;
+    delete legacy.serverIds;
+    assert.deepEqual(parseQuickSettings(legacy), { ...settings, serverIds: null });
   });
 });

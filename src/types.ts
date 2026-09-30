@@ -81,6 +81,8 @@ export interface QuickInviteSettings extends PermissionFlags {
   expiresInDays: 1 | 7 | 30 | null;
   duration: string;
   unlimited: boolean;
+  /** 設定預設媒體庫時勾選的伺服器；null 表示未設定，快速邀請涵蓋所有已驗證伺服器。 */
+  serverIds: number[] | null;
   libraries: QuickLibraryMatcher[] | null;
 }
 

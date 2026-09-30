@@ -413,10 +413,17 @@ async function beginQuickInvite(ctx: Req, chatId: number): Promise<Screen> {
 
 async function createQuickInvite(ctx: Req, chatId: number, servers: ServerInfo[]): Promise<Screen> {
   const settings = await loadQuickSettings(ctx.sessions);
-  const enabled = await enabledLibraries(ctx, sortedServerIds(servers));
-  // 預設媒體庫未設定（或為空）時，涵蓋所有已驗證伺服器的全部已啟用媒體庫。
+  // 跟隨設定裡勾選的伺服器（僅計算仍已驗證的）；從未設定時才用全部已驗證伺服器。
+  const verifiedIds = new Set(servers.map((server) => server.id));
+  const selectedIds = settings.serverIds?.filter((id) => verifiedIds.has(id)) ?? [];
+  const serverIds = settings.serverIds?.length ? selectedIds : sortedServerIds(servers);
+  if (!serverIds.length) {
+    await send(ctx, chatId, ctx.cat.msg.noServersQuick, invitesKeyboard(ctx.cat));
+    return { type: "invites" };
+  }
+  const enabled = await enabledLibraries(ctx, serverIds);
+  // 預設媒體庫未設定（或為空）時，涵蓋這些伺服器的全部已啟用媒體庫。
   const preset = settings.libraries?.length ? settings.libraries : null;
-  let serverIds = sortedServerIds(servers);
   let libraryIds: number[] = [];
   let libraries = ctx.cat.librariesLine([ctx.cat.allEnabledLibraries]);
   if (preset) {
@@ -431,10 +438,6 @@ async function createQuickInvite(ctx: Req, chatId: number, servers: ServerInfo[]
       return { type: "invites" };
     }
     libraryIds = selected.map((library) => library.id);
-    // 預設媒體庫所在的伺服器就是邀請要涵蓋的伺服器，不用再問。
-    serverIds = [...new Set(selected.map((library) => library.serverId).filter((id): id is number => id !== null))].sort(
-      (a, b) => a - b,
-    );
     libraries = ctx.cat.librariesLine(selected.map((library) => library.name));
   }
   const invites = await ctx.wizarr.listInvitations();
@@ -726,7 +729,7 @@ async function handleSettingsLibraryPick(
     return renderSettingsLibraryPick(ctx, chatId, serverIds, selectedIds, shiftPage(B, screen.page, text), enabled);
   }
   if (text === B.allLibraries) {
-    await updateQuickSettings(ctx, { libraries: null });
+    await updateQuickSettings(ctx, { libraries: null, serverIds });
     return showSettings(ctx, chatId, ctx.cat.msg.allLibrariesSaved);
   }
   if (text === B.librariesDone) {
@@ -737,7 +740,7 @@ async function handleSettingsLibraryPick(
       const library = enabled.find((item) => item.id === id);
       return { name: library?.name ?? ctx.cat.msg.libraryFallbackName(id), externalId: library?.externalId ?? null };
     });
-    await updateQuickSettings(ctx, { libraries });
+    await updateQuickSettings(ctx, { libraries, serverIds });
     return showSettings(ctx, chatId, ctx.cat.msg.librariesSaved);
   }
   const libraryId = parseLibraryButton(ctx.cat, text);

@@ -12,6 +12,7 @@ export function defaultQuickSettings(): QuickInviteSettings {
     allowDownloads: false,
     allowLiveTv: false,
     allowMobileUploads: false,
+    serverIds: null,
     libraries: null,
   };
 }
@@ -40,6 +41,8 @@ export function parseQuickSettings(value: unknown): QuickInviteSettings | null {
   if (typeof record.allowDownloads !== "boolean") return null;
   if (typeof record.allowLiveTv !== "boolean") return null;
   if (typeof record.allowMobileUploads !== "boolean") return null;
+  const serverIds = parseServerIds(record.serverIds);
+  if (serverIds === undefined) return null;
   const libraries = parseMatchers(record.libraries);
   if (libraries === undefined) return null;
   return {
@@ -49,8 +52,21 @@ export function parseQuickSettings(value: unknown): QuickInviteSettings | null {
     allowDownloads: record.allowDownloads,
     allowLiveTv: record.allowLiveTv,
     allowMobileUploads: record.allowMobileUploads,
+    serverIds,
     libraries,
   };
+}
+
+/** serverIds 是後來才加的欄位：缺欄位或 null 視為未設定（向後相容舊資料）。 */
+function parseServerIds(value: unknown): number[] | null | undefined {
+  if (value === null || value === undefined) return null;
+  if (!Array.isArray(value)) return undefined;
+  const ids: number[] = [];
+  for (const item of value) {
+    if (typeof item !== "number" || !Number.isInteger(item) || item <= 0) return undefined;
+    ids.push(item);
+  }
+  return [...new Set(ids)].sort((a, b) => a - b);
 }
 
 function parseMatchers(value: unknown): QuickLibraryMatcher[] | null | undefined {
@@ -75,8 +91,17 @@ export function sameQuickSettings(a: QuickInviteSettings, b: QuickInviteSettings
     a.allowDownloads === b.allowDownloads &&
     a.allowLiveTv === b.allowLiveTv &&
     a.allowMobileUploads === b.allowMobileUploads &&
+    sameServerIds(a.serverIds, b.serverIds) &&
     sameMatchers(a.libraries, b.libraries)
   );
+}
+
+function sameServerIds(a: number[] | null, b: number[] | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.length !== b.length) return false;
+  const left = [...a].sort((x, y) => x - y);
+  const right = [...b].sort((x, y) => x - y);
+  return left.every((id, index) => id === right[index]);
 }
 
 function sameMatchers(a: QuickLibraryMatcher[] | null, b: QuickLibraryMatcher[] | null): boolean {

@@ -788,27 +788,62 @@ describe("回覆鍵盤", () => {
     assert.deepEqual(wizarr.created[0]?.serverIds, [1, 2]);
   });
 
-  it("設定預設媒體庫時，快速邀請只涵蓋這些媒體庫所在的伺服器", async () => {
+  it("快速邀請跟隨設定裡勾選的伺服器，而非全部已驗證伺服器", async () => {
     const wizarr = fakeWizarr({
       async listServers() {
         return twoEmbyServers();
       },
       async listLibraries() {
-        return quickLibraryFixtures().map((item) => ({ ...item, serverId: 2, serverName: "Emby 二號" }));
+        return [
+          { ...library(3, "Movies", "mov"), serverId: 1, serverName: "Emby 一號" },
+          { ...library(12, "Anime", "ani"), serverId: 2, serverName: "Emby 二號" },
+        ];
       },
     });
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
-    await saveQuickSettings(ctx.sessions, {
-      ...defaultQuickSettings(),
-      libraries: [
-        { name: "Movies", externalId: "mov" },
-        { name: "Anime", externalId: "ani" },
-      ],
-    });
+    await run(B.settings, ctx);
+    await run(B.setLibraries, ctx);
+    // 只勾選 Emby 二號與它的 Anime
+    await run(serverButton(cat, 2), ctx);
+    await run(B.serversDone, ctx);
+    await run(libraryButton(cat, 12, false), ctx);
+    await run(B.librariesDone, ctx);
     await run(B.quickInvite, ctx);
     assert.match(ctx.telegram.last().text, /邀請已建立/);
-    assert.deepEqual(ctx.wizarr.created[0]?.serverIds, [2]);
-    assert.deepEqual(ctx.wizarr.created[0]?.libraryIds, [3, 12]);
+    assert.deepEqual(wizarr.created[0]?.serverIds, [2]);
+    assert.deepEqual(wizarr.created[0]?.libraryIds, [12]);
+  });
+
+  it("預設媒體庫選全部時仍只涵蓋勾選的伺服器", async () => {
+    const wizarr = fakeWizarr({
+      async listServers() {
+        return twoEmbyServers();
+      },
+      async listLibraries() {
+        return [
+          { ...library(3, "Movies", "mov"), serverId: 1, serverName: "Emby 一號" },
+          { ...library(12, "Anime", "ani"), serverId: 2, serverName: "Emby 二號" },
+        ];
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.settings, ctx);
+    await run(B.setLibraries, ctx);
+    await run(serverButton(cat, 2), ctx);
+    await run(B.serversDone, ctx);
+    await run(B.allLibraries, ctx);
+    assert.match(ctx.telegram.last().text, /已改用全部已啟用的媒體庫/);
+    await run(B.quickInvite, ctx);
+    assert.deepEqual(wizarr.created[0]?.serverIds, [2]);
+    assert.deepEqual(wizarr.created[0]?.libraryIds, []);
+  });
+
+  it("設定裡勾選的伺服器已不存在時無法建立快速邀請", async () => {
+    const ctx = quickCtx();
+    await saveQuickSettings(ctx.sessions, { ...defaultQuickSettings(), serverIds: [9] });
+    await run(B.quickInvite, ctx);
+    assert.match(ctx.telegram.last().text, /沒有已驗證的伺服器/);
+    assert.equal(ctx.wizarr.created.length, 0);
   });
 
   it("多台伺服器時設定預設媒體庫會列出名稱對照", async () => {

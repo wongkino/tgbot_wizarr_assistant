@@ -22,7 +22,7 @@
 
 建立邀請會依序詢問：伺服器、邀請連結有效期、帳號期限、媒體庫、下載 / 直播 / 上傳。停用與刪除都要再按一次確認。列出或建立邀請時，會再送出該邀請網址的 QR code。只有一台已驗證伺服器時會自動使用該台；多台時會列出 #ID 與名稱對照，可複選後一次邀請多台。
 
-快速邀請會立即建立邀請，不用再選擇伺服器：預設涵蓋所有已驗證的伺服器（Emby、Plex 等）；有設定預設媒體庫時，則只涵蓋這些媒體庫所在的伺服器。預設值為：連結 7 天、帳號無限制，下載、直播與上傳皆關閉，媒體庫為全部已啟用的媒體庫。這些預設值都能在主選單的「⚙️ 設定」調整：連結有效期、帳號期限、權限，以及預設媒體庫（可改為自訂媒體庫，可複選多台伺服器、媒體庫會合併顯示；伺服器缺少所選媒體庫時不會建立）。連結到期前再按會沿用同一組代碼，但更改任何設定後會新建一組。設定與代碼在 Worker 版記在 KV，Docker 版重啟後會還原預設值。
+快速邀請會立即建立邀請，不用再選擇伺服器：跟隨設定預設媒體庫時勾選的伺服器與媒體庫；從未設定時則涵蓋所有已驗證的伺服器（Emby、Plex 等）。預設值為：連結 7 天、帳號無限制，下載、直播與上傳皆關閉，媒體庫為全部已啟用的媒體庫。這些預設值都能在主選單的「⚙️ 設定」調整：連結有效期、帳號期限、權限，以及預設媒體庫（可改為自訂媒體庫，可複選多台伺服器、媒體庫會合併顯示；伺服器缺少所選媒體庫時不會建立）。連結到期前再按會沿用同一組代碼（永不過期的連結會一直沿用），但更改任何設定後會新建一組。設定與代碼在 Worker 版記在 KV，Docker 版重啟後會還原預設值。
 
 Wizarr 在停用失敗時可能改為刪除帳號，確認畫面會先說明這件事。邀請網址若是 `/j/...` 這類相對路徑，會補上 `WIZARR_PUBLIC_URL`。
 
@@ -47,7 +47,7 @@ docker compose -f docker/docker-compose.yml up -d
 
 這會拉取預建的 `linux/amd64` 映像 `ghcr.io/wongkino/tgbot_wizarr_assistant:latest`（由 repo 的 **docker** GitHub Action 手動建置發佈）。若套件設為 private，請先 `docker login ghcr.io`。要改從原始碼建置，改用 `docker/docker-compose.yml` 裡註解的 `build:` 設定，並執行 `up -d --build`。
 
-`MODE=polling` 時不需要對外出埠。Telegram 會由容器主動連線。
+`MODE=polling` 時不需要對外出埠。Telegram 會由容器主動連線。此模式下 `/telegram` webhook 端點會關閉，即使埠被對外暴露也只回應 `GET /health`。
 
 若要改成 webhook，把 `docker/.env` 的 `MODE` 設為 `webhook`，在前面放好 HTTPS 反向代理，並設定 webhook：
 
@@ -90,6 +90,7 @@ Worker 必須能從公網連到 Wizarr。Wizarr 只聽區網時請改用 Docker�
 | `WIZARR_URL` | 公開的 Wizarr 位址 |
 | `WIZARR_API_KEY` | Wizarr API key |
 | `WIZARR_PUBLIC_URL` | 邀請連結用的對外網址 |
+| `TIMEZONE` | 選填。日期顯示的 IANA 時區，預設 `Asia/Hong_Kong` |
 
 API token 可在 Cloudflare 儀表板的 My Profile → API Tokens 建立。然後把程式推上 `main`，或在 Actions 頁手動執行 Deploy Worker。
 
