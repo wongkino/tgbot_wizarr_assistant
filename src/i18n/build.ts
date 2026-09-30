@@ -97,6 +97,8 @@ export interface CatalogStrings {
     lineDuration: string;
     /** {libraries} */
     lineLibraries: string;
+    /** 快速設定裡的沿用代碼行：{value}（代入 on/off） */
+    lineReuse: string;
     /** 摘要裡單台伺服器的格式：{name} {id} */
     serverEntry: string;
     /** 邀請摘要第一行：{servers}（預先組好的多台字串） */
@@ -165,6 +167,8 @@ export interface CatalogStrings {
     allLibrariesSaved: string;
     pickOneLibrary: string;
     librariesSaved: string;
+    /** 沿用代碼開關的儲存提示：{value}（代入 on/off） */
+    reuseSaved: string;
     /** {id} */
     libraryFallbackName: string;
     /** API 缺欄位時的使用者顯示名：{id} */
@@ -326,6 +330,7 @@ export function buildCatalog(s: CatalogStrings): Catalog {
         tpl(s.tpl.lineExpiry, { expiry: expiryLabel(settings.expiresInDays) }),
         tpl(s.tpl.lineDuration, { duration: esc(durationLabel(settings.duration, settings.unlimited)) }),
         tpl(s.tpl.lineLibraries, { libraries }),
+        tpl(s.tpl.lineReuse, { value: flag(settings.reuseCode) }),
         ...permissionLines(settings),
       ];
     },
@@ -398,6 +403,7 @@ export function buildCatalog(s: CatalogStrings): Catalog {
       allLibrariesSaved: s.msg.allLibrariesSaved,
       pickOneLibrary: s.msg.pickOneLibrary,
       librariesSaved: s.msg.librariesSaved,
+      reuseSaved: (on) => tpl(s.msg.reuseSaved, { value: flag(on) }),
       libraryFallbackName: (id) => tpl(s.msg.libraryFallbackName, { id }),
       userFallbackName: (id) => tpl(s.msg.userFallbackName, { id }),
       serverFallbackName: (id) => tpl(s.msg.serverFallbackName, { id }),

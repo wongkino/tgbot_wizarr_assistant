@@ -689,6 +689,35 @@ describe("回覆鍵盤", () => {
     assert.match(ctx.telegram.last().text, /CODE2/);
   });
 
+  it("關閉沿用代碼後每次都新建，重新開啟可沿用最新一組", async () => {
+    const created: CreateInvitationInput[] = [];
+    const wizarr = embyQuickWizarr(trackInvites(created).api);
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    // 預設開啟：按兩次只建一組
+    await run(B.quickInvite, ctx);
+    await run(B.quickInvite, ctx);
+    assert.equal(created.length, 1);
+    assert.match(ctx.telegram.last().text, /沿用這組代碼/);
+    // 關閉沿用：每次都新建
+    await run(B.settings, ctx);
+    assert.match(ctx.telegram.last().text, /沿用代碼：開/);
+    await run(B.reuseCode, ctx);
+    assert.match(ctx.telegram.last().text, /沿用代碼：關/);
+    await run(B.quickInvite, ctx);
+    await run(B.quickInvite, ctx);
+    assert.equal(created.length, 3);
+    assert.match(ctx.telegram.last().text, /CODE3/);
+    assert.doesNotMatch(ctx.telegram.last().text, /沿用這組代碼/);
+    // 重新開啟：沿用最新一組（CODE3）
+    await run(B.settings, ctx);
+    await run(B.reuseCode, ctx);
+    assert.match(ctx.telegram.last().text, /沿用代碼：開/);
+    await run(B.quickInvite, ctx);
+    assert.equal(created.length, 3);
+    assert.match(ctx.telegram.last().text, /沿用這組代碼/);
+    assert.match(ctx.telegram.last().text, /CODE3/);
+  });
+
   it("帳號期限有限時也會沿用相同設定的快速邀請", async () => {
     const created: CreateInvitationInput[] = [];
     const wizarr = embyQuickWizarr(trackInvites(created).api);

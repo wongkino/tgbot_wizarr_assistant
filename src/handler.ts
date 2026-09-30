@@ -446,8 +446,10 @@ async function createQuickInvite(ctx: Req, chatId: number, servers: ServerInfo[]
       );
     }
   }
-  const invites = await ctx.wizarr.listInvitations();
-  const existing = reusableQuickInvite(invites, libraryIds, settings, await savedQuickInvite(ctx, serverIds));
+  // 關閉沿用時每次都新建，不查現有邀請；仍會記住新代碼，重新開啟沿用時可接著用。
+  const existing = settings.reuseCode
+    ? reusableQuickInvite(await ctx.wizarr.listInvitations(), libraryIds, settings, await savedQuickInvite(ctx, serverIds))
+    : undefined;
   if (existing) {
     await sendCreatedInvitation(ctx, chatId, existing, libraries, ctx.cat.msg.quickReuseTitle);
     return { type: "invites" };
@@ -621,6 +623,12 @@ async function handleSettingsMenu(text: string, ctx: Req, chatId: number): Promi
     return { type: "settings_permissions", permissions };
   }
   if (text === B.setLibraries) return beginSettingsLibraries(ctx, chatId);
+  if (text === B.reuseCode) {
+    const { reuseCode } = await loadQuickSettings(ctx.sessions);
+    const next = !reuseCode;
+    await updateQuickSettings(ctx, { reuseCode: next });
+    return showSettings(ctx, chatId, ctx.cat.msg.reuseSaved(next));
+  }
   if (text === B.setLanguage) {
     await send(ctx, chatId, ctx.cat.msg.chooseLanguage, languageKeyboard());
     return { type: "settings_lang" };

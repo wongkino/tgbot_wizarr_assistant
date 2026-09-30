@@ -62,6 +62,7 @@ export interface Buttons {
   setDuration: string;
   setPermissions: string;
   setLibraries: string;
+  reuseCode: string;
   setLanguage: string;
   resetSettings: string;
 }
@@ -180,6 +181,8 @@ export interface Catalog {
     allLibrariesSaved: string;
     pickOneLibrary: string;
     librariesSaved: string;
+    /** 沿用代碼開關切換後的提示，代入新狀態。 */
+    reuseSaved(on: boolean): string;
     libraryFallbackName(id: number): string;
     /** API 缺欄位時的使用者顯示名。 */
     userFallbackName(id: number): string;
