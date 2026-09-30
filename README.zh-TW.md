@@ -107,3 +107,7 @@ npm run dev
 ```
 
 `npm run build` 會產出 `dist/node.mjs`，給 Docker 映像使用。
+
+## 授權
+
+[MIT](LICENSE)

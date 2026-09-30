@@ -107,3 +107,7 @@ npm run dev
 ```
 
 `npm run build` は Docker イメージ用の `dist/node.mjs` を生成します。
+
+## ライセンス
+
+[MIT](LICENSE)

@@ -107,3 +107,7 @@ npm run dev
 ```
 
 `npm run build` produces `dist/node.mjs` for the Docker image.
+
+## License
+
+[MIT](LICENSE)

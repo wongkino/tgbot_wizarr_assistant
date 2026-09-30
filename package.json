@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Telegram reply-keyboard bot for the Wizarr API, deployable as a Docker image or Cloudflare Worker.",
+  "license": "MIT",
   "engines": {
     "node": ">=22"
   },
