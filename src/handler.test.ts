@@ -846,6 +846,30 @@ describe("回覆鍵盤", () => {
     assert.equal(ctx.wizarr.created.length, 0);
   });
 
+  it("舊版設定沒有記錄伺服器時，以比對到的媒體庫推回伺服器", async () => {
+    const wizarr = fakeWizarr({
+      async listServers() {
+        return twoEmbyServers();
+      },
+      async listLibraries() {
+        return [
+          { ...library(3, "Movies", "mov"), serverId: 1, serverName: "Emby 一號" },
+          { ...library(12, "Anime", "ani"), serverId: 2, serverName: "Emby 二號" },
+        ];
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    // 舊版設定：有預設媒體庫，但沒有 serverIds 欄位
+    await saveQuickSettings(ctx.sessions, {
+      ...defaultQuickSettings(),
+      libraries: [{ name: "Movies", externalId: "mov" }],
+    });
+    await run(B.quickInvite, ctx);
+    assert.match(ctx.telegram.last().text, /邀請已建立/);
+    assert.deepEqual(wizarr.created[0]?.serverIds, [1]);
+    assert.deepEqual(wizarr.created[0]?.libraryIds, [3]);
+  });
+
   it("多台伺服器時設定預設媒體庫會列出名稱對照", async () => {
     const wizarr = fakeWizarr({
       async listServers() {

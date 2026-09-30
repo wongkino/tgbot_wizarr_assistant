@@ -416,7 +416,7 @@ async function createQuickInvite(ctx: Req, chatId: number, servers: ServerInfo[]
   // 跟隨設定裡勾選的伺服器（僅計算仍已驗證的）；從未設定時才用全部已驗證伺服器。
   const verifiedIds = new Set(servers.map((server) => server.id));
   const selectedIds = settings.serverIds?.filter((id) => verifiedIds.has(id)) ?? [];
-  const serverIds = settings.serverIds?.length ? selectedIds : sortedServerIds(servers);
+  let serverIds = settings.serverIds?.length ? selectedIds : sortedServerIds(servers);
   if (!serverIds.length) {
     await send(ctx, chatId, ctx.cat.msg.noServersQuick, invitesKeyboard(ctx.cat));
     return { type: "invites" };
@@ -439,6 +439,12 @@ async function createQuickInvite(ctx: Req, chatId: number, servers: ServerInfo[]
     }
     libraryIds = selected.map((library) => library.id);
     libraries = ctx.cat.librariesLine(selected.map((library) => library.name));
+    if (!settings.serverIds?.length) {
+      // 舊版設定沒記錄勾選的伺服器：以比對到的媒體庫所屬伺服器為準；重新儲存設定後改用記錄值。
+      serverIds = [...new Set(selected.map((library) => library.serverId).filter((id): id is number => id !== null))].sort(
+        (a, b) => a - b,
+      );
+    }
   }
   const invites = await ctx.wizarr.listInvitations();
   const existing = reusableQuickInvite(invites, libraryIds, settings, await savedQuickInvite(ctx, serverIds));
