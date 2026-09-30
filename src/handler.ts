@@ -500,29 +500,35 @@ function inviteReusable(invite: InvitationInfo, now: number): boolean {
 
 /** 用名稱比對預設伺服器；回傳比對到的伺服器與找不到的名稱。 */
 function matchServers(servers: ServerInfo[], names: string[]): { selected: ServerInfo[]; missing: string[] } {
-  const selected = new Map<number, ServerInfo>();
-  const missing: string[] = [];
-  for (const name of names) {
-    const matches = servers.filter((server) => server.name === name);
-    if (!matches.length) missing.push(name);
-    for (const server of matches) selected.set(server.id, server);
-  }
-  return { selected: [...selected.values()].sort((a, b) => a.id - b.id), missing };
+  return matchByKey(servers, names, (name) => name, (server, name) => server.name === name);
 }
 
 function matchLibraries(
   libraries: LibraryInfo[],
   matchers: QuickLibraryMatcher[],
 ): { selected: LibraryInfo[]; missing: string[] } {
-  const selected = new Map<number, LibraryInfo>();
+  return matchByKey(
+    libraries,
+    matchers,
+    (matcher) => matcher.name,
+    (library, matcher) =>
+      library.name === matcher.name || (matcher.externalId !== null && library.externalId === matcher.externalId),
+  );
+}
+
+/** 依 keys 逐一比對 items；比對不到的收入 missing（用 label 取名），比對到的去重後依 id 排序。 */
+function matchByKey<T extends { id: number }, K>(
+  items: T[],
+  keys: K[],
+  label: (key: K) => string,
+  matches: (item: T, key: K) => boolean,
+): { selected: T[]; missing: string[] } {
+  const selected = new Map<number, T>();
   const missing: string[] = [];
-  for (const matcher of matchers) {
-    const matches = libraries.filter(
-      (library) =>
-        library.name === matcher.name || (matcher.externalId !== null && library.externalId === matcher.externalId),
-    );
-    if (!matches.length) missing.push(matcher.name);
-    for (const library of matches) selected.set(library.id, library);
+  for (const key of keys) {
+    const found = items.filter((item) => matches(item, key));
+    if (!found.length) missing.push(label(key));
+    for (const item of found) selected.set(item.id, item);
   }
   return { selected: [...selected.values()].sort((a, b) => a.id - b.id), missing };
 }
@@ -595,6 +601,12 @@ async function showSettings(ctx: Req, chatId: number, notice?: string): Promise<
   return { type: "settings" };
 }
 
+/** 讀出目前快速邀請設定、套用 patch 後存回。 */
+async function updateQuickSettings(ctx: Req, patch: Partial<QuickInviteSettings>): Promise<void> {
+  const settings = await loadQuickSettings(ctx.sessions);
+  await saveQuickSettings(ctx.sessions, { ...settings, ...patch });
+}
+
 async function handleSettingsMenu(text: string, ctx: Req, chatId: number): Promise<Screen> {
   const B = ctx.cat.buttons;
   if (text === B.setExpiry) {
@@ -646,8 +658,7 @@ async function handleSettingsExpiry(text: string, ctx: Req, chatId: number): Pro
     await send(ctx, chatId, ctx.cat.msg.chooseExpiry, expiryKeyboard(ctx.cat));
     return { type: "settings_expiry" };
   }
-  const settings = await loadQuickSettings(ctx.sessions);
-  await saveQuickSettings(ctx.sessions, { ...settings, expiresInDays: expires });
+  await updateQuickSettings(ctx, { expiresInDays: expires });
   return showSettings(ctx, chatId, ctx.cat.msg.expirySaved);
 }
 
@@ -657,8 +668,7 @@ async function handleSettingsDuration(text: string, ctx: Req, chatId: number): P
     await send(ctx, chatId, ctx.cat.msg.chooseDuration, durationKeyboard(ctx.cat));
     return { type: "settings_duration" };
   }
-  const settings = await loadQuickSettings(ctx.sessions);
-  await saveQuickSettings(ctx.sessions, { ...settings, duration: choice.duration, unlimited: choice.unlimited });
+  await updateQuickSettings(ctx, { duration: choice.duration, unlimited: choice.unlimited });
   return showSettings(ctx, chatId, ctx.cat.msg.durationSaved);
 }
 
@@ -680,8 +690,7 @@ async function handleSettingsPermissions(
     return { type: "settings_permissions", permissions: toggled };
   }
   if (text === B.confirm) {
-    const settings = await loadQuickSettings(ctx.sessions);
-    await saveQuickSettings(ctx.sessions, { ...settings, ...permissionFlagsOf(screen.permissions) });
+    await updateQuickSettings(ctx, permissionFlagsOf(screen.permissions));
     return showSettings(ctx, chatId, ctx.cat.msg.permissionsSaved);
   }
   await send(ctx, chatId, ctx.cat.msg.permissionsToggleOrConfirm, permissionKeyboard(ctx.cat, screen.permissions, B.confirm));
@@ -717,14 +726,12 @@ async function handleSettingsServer(
   chatId: number,
 ): Promise<Screen> {
   if (text === ctx.cat.buttons.askServersEverytime) {
-    const settings = await loadQuickSettings(ctx.sessions);
-    await saveQuickSettings(ctx.sessions, { ...settings, servers: null });
+    await updateQuickSettings(ctx, { servers: null });
     return showSettings(ctx, chatId, ctx.cat.msg.askServersSaved);
   }
   const servers = await embyServers(ctx);
   return handleServerPick(screen, text, ctx, chatId, servers, ctx.cat.msg.pickEmbyVerified, async (chosen) => {
-    const settings = await loadQuickSettings(ctx.sessions);
-    await saveQuickSettings(ctx.sessions, { ...settings, servers: chosen.map((server) => server.name).sort() });
+    await updateQuickSettings(ctx, { servers: chosen.map((server) => server.name).sort() });
     return showSettings(ctx, chatId, ctx.cat.msg.serversSaved);
   });
 }
@@ -782,8 +789,7 @@ async function handleSettingsLibraryPick(
     return renderSettingsLibraryPick(ctx, chatId, serverIds, selectedIds, shiftPage(B, screen.page, text), enabled);
   }
   if (text === B.allLibraries) {
-    const settings = await loadQuickSettings(ctx.sessions);
-    await saveQuickSettings(ctx.sessions, { ...settings, libraries: null });
+    await updateQuickSettings(ctx, { libraries: null });
     return showSettings(ctx, chatId, ctx.cat.msg.allLibrariesSaved);
   }
   if (text === B.librariesDone) {
@@ -794,8 +800,7 @@ async function handleSettingsLibraryPick(
       const library = enabled.find((item) => item.id === id);
       return { name: library?.name ?? ctx.cat.msg.libraryFallbackName(id), externalId: library?.externalId ?? null };
     });
-    const settings = await loadQuickSettings(ctx.sessions);
-    await saveQuickSettings(ctx.sessions, { ...settings, libraries });
+    await updateQuickSettings(ctx, { libraries });
     return showSettings(ctx, chatId, ctx.cat.msg.librariesSaved);
   }
   const libraryId = parseLibraryButton(ctx.cat, text);
@@ -1049,13 +1054,11 @@ async function handleConfirm(pending: PendingAction, text: string, ctx: Req, cha
     return { type: "confirm", pending };
   }
 
-  if (pending.kind === "disable_user") {
-    const message = await ctx.wizarr.disableUser(pending.userId);
-    await send(ctx, chatId, esc(message ?? ctx.cat.msg.actionDone), usersKeyboard(ctx.cat));
-    return { type: "users" };
-  }
-  if (pending.kind === "delete_user") {
-    const message = await ctx.wizarr.deleteUser(pending.userId);
+  if (pending.kind === "disable_user" || pending.kind === "delete_user") {
+    const message =
+      pending.kind === "disable_user"
+        ? await ctx.wizarr.disableUser(pending.userId)
+        : await ctx.wizarr.deleteUser(pending.userId);
     await send(ctx, chatId, esc(message ?? ctx.cat.msg.actionDone), usersKeyboard(ctx.cat));
     return { type: "users" };
   }
@@ -1220,14 +1223,15 @@ async function renderServerPick(
   selectedIds: number[],
   notice?: string,
 ): Promise<Screen> {
-  const base =
-    type === "quick_invite_server"
-      ? `${ctx.cat.msg.chooseEmbyQuick}\n\n${formatServerLines(ctx.cat, servers)}`
-      : type === "settings_library_server"
-        ? `${ctx.cat.msg.chooseEmbySettings}\n\n${formatServerLines(ctx.cat, servers)}`
-        : type === "settings_server"
-          ? `${ctx.cat.msg.chooseEmbyServersSettings}\n\n${formatServerLines(ctx.cat, servers)}`
-          : formatServerChoices(ctx.cat, servers);
+  const prompts: Record<ServerPickScreen, string> = {
+    quick_invite_server: ctx.cat.msg.chooseEmbyQuick,
+    settings_library_server: ctx.cat.msg.chooseEmbySettings,
+    settings_server: ctx.cat.msg.chooseEmbyServersSettings,
+    invite_server: "",
+  };
+  const base = prompts[type]
+    ? `${prompts[type]}\n\n${formatServerLines(ctx.cat, servers)}`
+    : formatServerChoices(ctx.cat, servers);
   const extraRow = type === "settings_server" ? [ctx.cat.buttons.askServersEverytime] : undefined;
   await send(
     ctx,
@@ -1250,7 +1254,7 @@ function serverMultiKeyboard(cat: Catalog, servers: ServerInfo[], selectedIds: n
   );
 }
 
-/** 三種流程共用的多選伺服器處理：切換勾選，按「選好了」交給 done 繼續。 */
+/** 各流程共用的多選伺服器處理：切換勾選，按「選好了」交給 done 繼續。 */
 async function handleServerPick(
   screen: { type: ServerPickScreen; selectedIds: number[] },
   text: string,
