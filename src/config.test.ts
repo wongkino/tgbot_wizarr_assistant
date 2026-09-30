@@ -59,4 +59,11 @@ describe("loadConfig", () => {
     );
     assert.throws(() => parseAdminIds("12, abc"), /abc/);
   });
+
+  it("TIMEZONE 預設 Asia/Hong_Kong，可自訂並會驗證", () => {
+    const base = { TELEGRAM_BOT_TOKEN: "token", WIZARR_URL: "http://host", WIZARR_API_KEY: "key" };
+    assert.equal(loadConfig(base).timeZone, "Asia/Hong_Kong");
+    assert.equal(loadConfig({ ...base, TIMEZONE: "Asia/Taipei" }).timeZone, "Asia/Taipei");
+    assert.throws(() => loadConfig({ ...base, TIMEZONE: "Mars/Olympus" }), /TIMEZONE/);
+  });
 });

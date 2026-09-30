@@ -28,6 +28,7 @@ const config: AppConfig = {
   wizarrPublicUrl: "https://wizarr.example",
   mode: "polling",
   port: 8080,
+  timeZone: "Asia/Hong_Kong",
 };
 
 function message(text: string, userId = 7, chatType = "private"): Update {
@@ -105,6 +106,54 @@ function server(id: number, name: string, serverType: string) {
     allowLiveTv: false,
     allowMobileUploads: false,
   };
+}
+
+/** 單台 Emby + 四個媒體庫的快速邀請場景。 */
+function embyQuickWizarr(overrides: Partial<WizarrApi> = {}) {
+  return fakeWizarr({
+    async listServers() {
+      return [server(1, "Emby", "emby")];
+    },
+    async listLibraries() {
+      return quickLibraryFixtures();
+    },
+    ...overrides,
+  });
+}
+
+/** 兩台 Emby 的多選伺服器場景。 */
+function twoEmbyServers() {
+  return [server(1, "Emby 一號", "emby"), server(2, "Emby 二號", "emby")];
+}
+
+/** 追蹤建立的邀請並讓 listInvitations 讀到；expiresInDays 為 null 表示永不過期。 */
+function trackInvites(created: CreateInvitationInput[], expiresInDays: number | null = 7) {
+  const invites: Awaited<ReturnType<WizarrApi["listInvitations"]>> = [];
+  const api: Partial<WizarrApi> = {
+    async listInvitations() {
+      return invites;
+    },
+    async createInvitation(input) {
+      created.push(input);
+      const invite = {
+        id: 8 + created.length,
+        code: `CODE${created.length}`,
+        url: `https://wizarr.example/j/CODE${created.length}`,
+        status: "pending",
+        created: null,
+        expires: expiresInDays === null ? null : new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString(),
+        usedAt: null,
+        usedBy: null,
+        duration: input.duration,
+        unlimited: input.unlimited,
+        libraryIds: input.libraryIds,
+        serverNames: ["Emby"],
+      };
+      invites.push(invite);
+      return invite;
+    },
+  };
+  return { invites, api };
 }
 
 function users(count: number): UserInfo[] {
@@ -335,14 +384,7 @@ describe("語言", () => {
   });
 
   it("切換語言後快速邀請照常運作", async () => {
-    const wizarr = fakeWizarr({
-      async listServers() {
-        return [server(1, "Emby", "emby")];
-      },
-      async listLibraries() {
-        return quickLibraryFixtures();
-      },
-    });
+    const wizarr = embyQuickWizarr();
     const ctx = rawCtx(wizarr);
     await runRaw("English", ctx);
     const en = catalogFor("en").buttons;
@@ -403,10 +445,7 @@ describe("回覆鍵盤", () => {
   });
 
   it("快速邀請直接建立，使用設定的媒體庫", async () => {
-    const wizarr = fakeWizarr({
-      async listServers() {
-        return [server(1, "Emby", "emby")];
-      },
+    const wizarr = embyQuickWizarr({
       async listLibraries() {
         return [
           library(3, "Movies", "mov"),
@@ -451,58 +490,22 @@ describe("回覆鍵盤", () => {
   });
 
   it("Wizarr 沒有回傳媒體庫時仍沿用未過期的快速邀請", async () => {
-    const invites: Awaited<ReturnType<WizarrApi["listInvitations"]>> = [];
     const created: CreateInvitationInput[] = [];
-    const wizarr = fakeWizarr({
-      async listServers() {
-        return [server(1, "Emby", "emby")];
-      },
-      async listLibraries() {
-        return quickLibraryFixtures();
-      },
-      async listInvitations() {
-        return invites;
-      },
-      async createInvitation(input) {
-        created.push(input);
-        const invite = {
-          id: 9,
-          code: "NEW1",
-          url: "https://wizarr.example/j/NEW1",
-          status: "pending",
-          created: null,
-          expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          usedAt: null,
-          usedBy: null,
-          duration: "unlimited",
-          unlimited: true,
-          libraryIds: [],
-          serverNames: ["Emby"],
-        };
-        invites.push(invite);
-        return invite;
-      },
-    });
-    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    const track = trackInvites(created);
+    const ctx = { wizarr: embyQuickWizarr(track.api), telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.quickInvite, ctx);
     await run(B.quickInvite, ctx);
-    const current = invites[0];
+    const current = track.invites[0];
     assert.ok(current);
     current.status = "used";
     await run(B.quickInvite, ctx);
     assert.equal(created.length, 1);
     assert.match(ctx.telegram.last().text, /沿用這組代碼/);
-    assert.match(ctx.telegram.last().text, /NEW1/);
+    assert.match(ctx.telegram.last().text, /CODE1/);
   });
 
-  it("沒有到期時間或缺少設定的媒體庫時不會沿用或建立", async () => {
-    const openEnded = fakeWizarr({
-      async listServers() {
-        return [server(1, "Emby", "emby")];
-      },
-      async listLibraries() {
-        return quickLibraryFixtures();
-      },
+  it("未記住代碼時不沿用現有邀請；缺少設定媒體庫時不建立", async () => {
+    const openEnded = embyQuickWizarr({
       async listInvitations() {
         return [
           {
@@ -527,10 +530,7 @@ describe("回覆鍵盤", () => {
     assert.equal(openEnded.created.length, 1);
     assert.doesNotMatch(openCtx.telegram.last().text, /沿用這組代碼/);
 
-    const incomplete = fakeWizarr({
-      async listServers() {
-        return [server(1, "Emby", "emby")];
-      },
+    const incomplete = embyQuickWizarr({
       async listLibraries() {
         return [library(3, "Movies", "mov"), library(12, "Anime", "ani")];
       },
@@ -548,6 +548,24 @@ describe("回覆鍵盤", () => {
     await run(B.quickInvite, incompleteCtx);
     assert.equal(incomplete.created.length, 0);
     assert.match(incompleteCtx.telegram.last().text, /缺少：TV Shows、Documentaries/);
+  });
+
+  it("永不過期的快速邀請也會沿用", async () => {
+    const created: CreateInvitationInput[] = [];
+    const ctx = {
+      wizarr: embyQuickWizarr(trackInvites(created, null).api),
+      telegram: new Recorder(),
+      sessions: new MemorySessionStore(),
+    };
+    await saveQuickSettings(ctx.sessions, { ...defaultQuickSettings(), expiresInDays: null });
+    await run(B.quickInvite, ctx);
+    assert.equal(created.length, 1);
+    assert.equal(created[0]?.expiresInDays, null);
+    // 再按一次：設定相同、邀請永不過期，應沿用而非新建
+    await run(B.quickInvite, ctx);
+    assert.equal(created.length, 1);
+    assert.match(ctx.telegram.last().text, /沿用這組代碼/);
+    assert.match(ctx.telegram.last().text, /CODE1/);
   });
 
   it("快速邀請列出 Plex 在內的所有已驗證伺服器", async () => {
@@ -585,15 +603,7 @@ describe("回覆鍵盤", () => {
   });
 
   function quickCtx() {
-    const wizarr = fakeWizarr({
-      async listServers() {
-        return [server(1, "Emby", "emby")];
-      },
-      async listLibraries() {
-        return quickLibraryFixtures();
-      },
-    });
-    return { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    return { wizarr: embyQuickWizarr(), telegram: new Recorder(), sessions: new MemorySessionStore() };
   }
 
   it("設定頁可調整快速邀請的預設值", async () => {
@@ -669,38 +679,8 @@ describe("回覆鍵盤", () => {
   });
 
   it("更改設定後不會沿用舊的快速邀請", async () => {
-    const invites: Awaited<ReturnType<WizarrApi["listInvitations"]>> = [];
     const created: CreateInvitationInput[] = [];
-    const wizarr = fakeWizarr({
-      async listServers() {
-        return [server(1, "Emby", "emby")];
-      },
-      async listLibraries() {
-        return quickLibraryFixtures();
-      },
-      async listInvitations() {
-        return invites;
-      },
-      async createInvitation(input) {
-        created.push(input);
-        const invite = {
-          id: 9 + created.length,
-          code: `CODE${created.length}`,
-          url: `https://wizarr.example/j/CODE${created.length}`,
-          status: "pending",
-          created: null,
-          expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          usedAt: null,
-          usedBy: null,
-          duration: input.duration,
-          unlimited: input.unlimited,
-          libraryIds: input.libraryIds,
-          serverNames: ["Emby"],
-        };
-        invites.push(invite);
-        return invite;
-      },
-    });
+    const wizarr = embyQuickWizarr(trackInvites(created, 30).api);
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.quickInvite, ctx);
     await run(B.quickInvite, ctx);
@@ -716,38 +696,8 @@ describe("回覆鍵盤", () => {
   });
 
   it("帳號期限有限時也會沿用相同設定的快速邀請", async () => {
-    const invites: Awaited<ReturnType<WizarrApi["listInvitations"]>> = [];
     const created: CreateInvitationInput[] = [];
-    const wizarr = fakeWizarr({
-      async listServers() {
-        return [server(1, "Emby", "emby")];
-      },
-      async listLibraries() {
-        return quickLibraryFixtures();
-      },
-      async listInvitations() {
-        return invites;
-      },
-      async createInvitation(input) {
-        created.push(input);
-        const invite = {
-          id: 9 + created.length,
-          code: `CODE${created.length}`,
-          url: `https://wizarr.example/j/CODE${created.length}`,
-          status: "pending",
-          created: null,
-          expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          usedAt: null,
-          usedBy: null,
-          duration: input.duration,
-          unlimited: input.unlimited,
-          libraryIds: input.libraryIds,
-          serverNames: ["Emby"],
-        };
-        invites.push(invite);
-        return invite;
-      },
-    });
+    const wizarr = embyQuickWizarr(trackInvites(created).api);
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
     await saveQuickSettings(ctx.sessions, { ...defaultQuickSettings(), duration: "30", unlimited: false });
     await run(B.quickInvite, ctx);
@@ -847,7 +797,7 @@ describe("回覆鍵盤", () => {
   it("多台伺服器時快速邀請會列出名稱對照", async () => {
     const wizarr = fakeWizarr({
       async listServers() {
-        return [server(1, "Emby 一號", "emby"), server(2, "Emby 二號", "emby")];
+        return twoEmbyServers();
       },
       async listLibraries() {
         return quickLibraryFixtures().map((item) => ({ ...item, serverId: 2, serverName: "Emby 二號" }));
@@ -868,7 +818,7 @@ describe("回覆鍵盤", () => {
   it("快速邀請可複選多台伺服器", async () => {
     const wizarr = fakeWizarr({
       async listServers() {
-        return [server(1, "Emby 一號", "emby"), server(2, "Emby 二號", "emby")];
+        return twoEmbyServers();
       },
     });
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
@@ -883,7 +833,7 @@ describe("回覆鍵盤", () => {
   it("多台伺服器時設定預設媒體庫會列出名稱對照", async () => {
     const wizarr = fakeWizarr({
       async listServers() {
-        return [server(1, "Emby 一號", "emby"), server(2, "Emby 二號", "emby")];
+        return twoEmbyServers();
       },
       async listLibraries() {
         return quickLibraryFixtures();
@@ -904,7 +854,7 @@ describe("回覆鍵盤", () => {
   it("設定預設媒體庫可複選多台，媒體庫合併顯示", async () => {
     const wizarr = fakeWizarr({
       async listServers() {
-        return [server(1, "Emby 一號", "emby"), server(2, "Emby 二號", "emby")];
+        return twoEmbyServers();
       },
       async listLibraries() {
         return [
@@ -965,6 +915,16 @@ describe("回覆鍵盤", () => {
     assert.equal(ctx.telegram.photos[0]?.image[0], 0x89);
   });
 
+  it("QR code 發送失敗時邀請列表仍正常顯示", async () => {
+    const ctx = { wizarr: fakeWizarr(), telegram: new Recorder(), sessions: new MemorySessionStore() };
+    ctx.telegram.sendPhoto = async () => {
+      throw new Error("photo boom");
+    };
+    await run(B.listInvites, ctx);
+    assert.match(ctx.telegram.last().text, /ABCD/);
+    assert.doesNotMatch(ctx.telegram.last().text, /發生錯誤/);
+  });
+
   it("刪除邀請前會確認", async () => {
     let deleted = 0;
     const wizarr = fakeWizarr({
@@ -992,6 +952,22 @@ describe("回覆鍵盤", () => {
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.status, ctx);
     assert.match(ctx.telegram.last().text, /Unauthorized/);
+  });
+
+  it("流程中出錯時會帶著上層鍵盤回到上層畫面", async () => {
+    const wizarr = fakeWizarr({
+      async extendUser() {
+        throw new WizarrError("boom", 500);
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.extendUser, ctx);
+    await run(userButton(cat, 12), ctx);
+    assert.equal((await ctx.sessions.get("7"))?.type, "extend_days");
+    await run(B.days7, ctx);
+    assert.match(ctx.telegram.last().text, /Wizarr 錯誤：boom/);
+    assert.equal((await ctx.sessions.get("7"))?.type, "users");
+    assert.ok(ctx.telegram.buttons().includes(B.enableUser));
   });
 
   it("連線失敗時顯示在地化的無法連線訊息", async () => {

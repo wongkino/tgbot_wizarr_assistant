@@ -4,3 +4,4 @@ TELEGRAM_WEBHOOK_SECRET=
 WIZARR_URL=https://wizarr.example.com
 WIZARR_API_KEY=
 WIZARR_PUBLIC_URL=https://wizarr.example.com
+TIMEZONE=Asia/Hong_Kong

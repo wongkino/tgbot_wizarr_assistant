@@ -61,6 +61,11 @@ export function loadConfig(env: EnvLike): AppConfig {
     throw new ConfigError("PORT 必須是 1 到 65535 的整數");
   }
 
+  const timeZone = env.TIMEZONE?.trim() || "Asia/Hong_Kong";
+  if (!isValidTimeZone(timeZone)) {
+    throw new ConfigError("TIMEZONE 必須是有效的 IANA 時區名稱，例如 Asia/Taipei");
+  }
+
   return {
     telegramToken: token,
     webhookSecret,
@@ -70,7 +75,17 @@ export function loadConfig(env: EnvLike): AppConfig {
     wizarrPublicUrl: (publicOverride || publicBase).replace(/\/+$/, ""),
     mode,
     port,
+    timeZone,
   };
+}
+
+function isValidTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function required(env: EnvLike, name: string): string {

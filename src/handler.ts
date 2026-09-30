@@ -138,8 +138,11 @@ export async function handleUpdate(update: Update, ctx: AppContext): Promise<voi
           ? cat.msg.wizarrUnreachable(esc(error.message))
           : cat.msg.wizarrError(esc(error.message))
         : cat.msg.genericError;
+    // 出錯時回到上層畫面，讓 session 與送出錯誤訊息時顯示的鍵盤一致。
+    const parent = parentOf(screen);
     try {
-      await send(ctx, chatId, detail, keyboardFor(cat, screen));
+      await send(ctx, chatId, detail, keyboardFor(cat, parent));
+      await ctx.sessions.set(String(userId), parent, SESSION_TTL_SECONDS);
     } catch (sendError) {
       console.error("[bot] 無法回覆", sendError instanceof Error ? sendError.message : sendError);
     }
@@ -229,9 +232,9 @@ async function dispatch(
     case "extend_days":
       return handleExtendDays(screen, text, ctx, chatId);
     case "invite_server":
-      return handleInviteServer(screen, text, ctx, chatId);
+      return pickVerifiedServers(screen, text, ctx, chatId, (chosen) => beginInviteExpiry(ctx, chatId, chosen));
     case "quick_invite_server":
-      return handleQuickInviteServer(screen, text, ctx, chatId);
+      return pickVerifiedServers(screen, text, ctx, chatId, (chosen) => createQuickInvite(ctx, chatId, chosen));
     case "invite_expiry":
       return handleInviteExpiry(screen.draft, text, ctx, chatId);
     case "invite_duration":
@@ -253,7 +256,7 @@ async function dispatch(
     case "settings_permissions":
       return handleSettingsPermissions(screen, text, ctx, chatId);
     case "settings_library_server":
-      return handleSettingsLibraryServer(screen, text, ctx, chatId);
+      return pickVerifiedServers(screen, text, ctx, chatId, (chosen) => pickSettingsLibraries(ctx, chatId, chosen));
     case "settings_library_pick":
       return handleSettingsLibraryPick(screen, text, ctx, chatId);
     case "settings_lang":
@@ -321,8 +324,7 @@ async function handlePickUser(
   }
 
   if (screen.action === "enable") {
-    const message = await ctx.wizarr.enableUser(user.id);
-    await send(ctx, chatId, esc(message ?? ctx.cat.msg.actionDone), usersKeyboard(ctx.cat));
+    await sendActionResult(ctx, chatId, await ctx.wizarr.enableUser(user.id), usersKeyboard(ctx.cat));
     return { type: "users" };
   }
   if (screen.action === "reset") {
@@ -410,20 +412,8 @@ async function beginQuickInvite(ctx: Req, chatId: number): Promise<Screen> {
   });
 }
 
-async function handleQuickInviteServer(
-  screen: Extract<Screen, { type: "quick_invite_server" }>,
-  text: string,
-  ctx: Req,
-  chatId: number,
-): Promise<Screen> {
-  const servers = await verifiedServers(ctx);
-  return handleServerPick(screen, text, ctx, chatId, servers, ctx.cat.msg.pickVerified, (chosen) =>
-    createQuickInvite(ctx, chatId, chosen),
-  );
-}
-
 async function createQuickInvite(ctx: Req, chatId: number, servers: ServerInfo[]): Promise<Screen> {
-  const serverIds = servers.map((server) => server.id).sort((a, b) => a - b);
+  const serverIds = sortedServerIds(servers);
   const settings = await loadQuickSettings(ctx.sessions);
   const enabled = await enabledLibraries(ctx, serverIds);
   let libraryIds: number[];
@@ -484,7 +474,9 @@ function reusableQuickInvite(
 }
 
 function inviteReusable(invite: InvitationInfo, now: number): boolean {
-  if ((invite.status !== "pending" && invite.status !== "used") || !invite.expires) return false;
+  if (invite.status !== "pending" && invite.status !== "used") return false;
+  // 永不過期的邀請本來就有效，可以直接沿用。
+  if (!invite.expires) return true;
   const time = Date.parse(invite.expires);
   return !Number.isNaN(time) && time > now;
 }
@@ -567,6 +559,16 @@ function sameIds(left: number[], right: number[]): boolean {
   const a = [...left].sort((x, y) => x - y);
   const b = [...right].sort((x, y) => x - y);
   return a.every((id, index) => id === b[index]);
+}
+
+/** 多選切換：已選則移除、未選則加入，結果依 id 排序。 */
+function toggleId(ids: number[], id: number): number[] {
+  return ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id].sort((a, b) => a - b);
+}
+
+/** 伺服器 id 列表（排序後），與快速邀請代碼的鍵使用相同順序。 */
+function sortedServerIds(servers: ServerInfo[]): number[] {
+  return servers.map((server) => server.id).sort((a, b) => a - b);
 }
 
 async function verifiedServers(ctx: Req): Promise<ServerInfo[]> {
@@ -678,26 +680,15 @@ async function handleSettingsPermissions(
 async function beginSettingsLibraries(ctx: Req, chatId: number): Promise<Screen> {
   return chooseServers(ctx, chatId, "settings_library_server", await verifiedServers(ctx), {
     empty: { message: ctx.cat.msg.noServersLibrarySettings, keyboard: settingsKeyboard(ctx.cat), screen: { type: "settings" } },
-    single: async (servers) => {
-      const serverIds = [servers[0].id];
-      const enabled = await enabledLibraries(ctx, serverIds);
-      return renderSettingsLibraryPick(ctx, chatId, serverIds, await selectedLibraryIds(ctx, enabled), 0, enabled);
-    },
+    single: (servers) => pickSettingsLibraries(ctx, chatId, servers),
   });
 }
 
-async function handleSettingsLibraryServer(
-  screen: Extract<Screen, { type: "settings_library_server" }>,
-  text: string,
-  ctx: Req,
-  chatId: number,
-): Promise<Screen> {
-  const servers = await verifiedServers(ctx);
-  return handleServerPick(screen, text, ctx, chatId, servers, ctx.cat.msg.pickVerified, async (chosen) => {
-    const serverIds = chosen.map((server) => server.id).sort((a, b) => a - b);
-    const enabled = await enabledLibraries(ctx, serverIds);
-    return renderSettingsLibraryPick(ctx, chatId, serverIds, await selectedLibraryIds(ctx, enabled), 0, enabled);
-  });
+/** 進入預設媒體庫挑選：讀出啟用的媒體庫與已儲存的選取後渲染。 */
+async function pickSettingsLibraries(ctx: Req, chatId: number, servers: ServerInfo[]): Promise<Screen> {
+  const serverIds = sortedServerIds(servers);
+  const enabled = await enabledLibraries(ctx, serverIds);
+  return renderSettingsLibraryPick(ctx, chatId, serverIds, await selectedLibraryIds(ctx, enabled), 0, enabled);
 }
 
 /** 已儲存的預設媒體庫比對器，套用到目前啟用的媒體庫上。 */
@@ -716,14 +707,8 @@ async function renderSettingsLibraryPick(
   libraries: LibraryInfo[],
   notice?: string,
 ): Promise<Screen> {
-  const view = pageWindow(libraries, page, PAGE.libraries);
-  await send(
-    ctx,
-    chatId,
-    libraryPickText(ctx.cat, view, selectedIds, notice),
-    libraryPickMarkup(ctx.cat, view, selectedIds, ctx.cat.ph.choosePresetLibrary),
-  );
-  return { type: "settings_library_pick", serverIds, selectedIds, page: view.page };
+  const shown = await sendLibraryPick(ctx, chatId, libraries, selectedIds, page, ctx.cat.ph.choosePresetLibrary, notice);
+  return { type: "settings_library_pick", serverIds, selectedIds, page: shown };
 }
 
 async function handleSettingsLibraryPick(
@@ -758,10 +743,7 @@ async function handleSettingsLibraryPick(
   if (!library) {
     return renderSettingsLibraryPick(ctx, chatId, serverIds, selectedIds, screen.page, enabled, ctx.cat.msg.pickOneLibrary);
   }
-  const next = selectedIds.includes(library.id)
-    ? selectedIds.filter((id) => id !== library.id)
-    : [...selectedIds, library.id].sort((a, b) => a - b);
-  return renderSettingsLibraryPick(ctx, chatId, serverIds, next, screen.page, enabled);
+  return renderSettingsLibraryPick(ctx, chatId, serverIds, toggleId(selectedIds, library.id), screen.page, enabled);
 }
 
 async function beginCreateInvite(ctx: Req, chatId: number): Promise<Screen> {
@@ -778,18 +760,6 @@ async function beginInviteExpiry(ctx: Req, chatId: number, servers: ServerInfo[]
   draft.serverNames = ordered.map((server) => server.name);
   await send(ctx, chatId, ctx.cat.msg.inviteServerExpiryPrompt(draft.serverNames), expiryKeyboard(ctx.cat));
   return { type: "invite_expiry", draft };
-}
-
-async function handleInviteServer(
-  screen: Extract<Screen, { type: "invite_server" }>,
-  text: string,
-  ctx: Req,
-  chatId: number,
-): Promise<Screen> {
-  const servers = await verifiedServers(ctx);
-  return handleServerPick(screen, text, ctx, chatId, servers, ctx.cat.msg.pickVerified, (chosen) =>
-    beginInviteExpiry(ctx, chatId, chosen),
-  );
 }
 
 async function handleInviteExpiry(draft: InviteDraft, text: string, ctx: Req, chatId: number): Promise<Screen> {
@@ -883,14 +853,28 @@ async function renderLibraryPick(
   libraries: LibraryInfo[],
   notice?: string,
 ): Promise<Screen> {
+  const shown = await sendLibraryPick(ctx, chatId, libraries, draft.libraryIds, page, ctx.cat.ph.chooseLibrary, notice);
+  return { type: "invite_library_pick", draft, page: shown };
+}
+
+/** 兩種媒體庫選擇畫面共用的渲染：分頁 + 內文 + 鍵盤，回傳實際頁碼。 */
+async function sendLibraryPick(
+  ctx: Req,
+  chatId: number,
+  libraries: LibraryInfo[],
+  selectedIds: number[],
+  page: number,
+  placeholder: string,
+  notice?: string,
+): Promise<number> {
   const view = pageWindow(libraries, page, PAGE.libraries);
   await send(
     ctx,
     chatId,
-    libraryPickText(ctx.cat, view, draft.libraryIds, notice),
-    libraryPickMarkup(ctx.cat, view, draft.libraryIds, ctx.cat.ph.chooseLibrary),
+    libraryPickText(ctx.cat, view, selectedIds, notice),
+    libraryPickMarkup(ctx.cat, view, selectedIds, placeholder),
   );
-  return { type: "invite_library_pick", draft, page: view.page };
+  return view.page;
 }
 
 /** 兩種媒體庫選擇畫面共用的內文（含提示前綴）。 */
@@ -1009,12 +993,11 @@ async function handleConfirm(pending: PendingAction, text: string, ctx: Req, cha
       pending.kind === "disable_user"
         ? await ctx.wizarr.disableUser(pending.userId)
         : await ctx.wizarr.deleteUser(pending.userId);
-    await send(ctx, chatId, esc(message ?? ctx.cat.msg.actionDone), usersKeyboard(ctx.cat));
+    await sendActionResult(ctx, chatId, message, usersKeyboard(ctx.cat));
     return { type: "users" };
   }
   if (pending.kind === "delete_invite") {
-    const message = await ctx.wizarr.deleteInvitation(pending.invitationId);
-    await send(ctx, chatId, esc(message ?? ctx.cat.msg.actionDone), invitesKeyboard(ctx.cat));
+    await sendActionResult(ctx, chatId, await ctx.wizarr.deleteInvitation(pending.invitationId), invitesKeyboard(ctx.cat));
     return { type: "invites" };
   }
 
@@ -1042,7 +1025,12 @@ async function sendInviteQr(
   invitation: { code: string; url: string },
 ): Promise<void> {
   if (!/^https?:\/\//i.test(invitation.url)) return;
-  await ctx.telegram.sendPhoto(chatId, await qrPng(invitation.url), inviteCaption(ctx.cat, invitation));
+  try {
+    await ctx.telegram.sendPhoto(chatId, await qrPng(invitation.url), inviteCaption(ctx.cat, invitation));
+  } catch (error) {
+    // QR code 是附加資訊，發送失敗不影響主流程（邀請文字已另外送出）。
+    console.error("[bot] 無法送出邀請 QR code", error instanceof Error ? error.message : error);
+  }
 }
 
 function inviteCaption(cat: Catalog, invitation: { code: string; url: string }): string {
@@ -1202,6 +1190,18 @@ function serverMultiKeyboard(cat: Catalog, servers: ServerInfo[], selectedIds: n
   );
 }
 
+/** 三個多選伺服器畫面共用的入口：重新讀取已驗證伺服器後交給 handleServerPick。 */
+async function pickVerifiedServers(
+  screen: { type: ServerPickScreen; selectedIds: number[] },
+  text: string,
+  ctx: Req,
+  chatId: number,
+  done: (chosen: ServerInfo[]) => Promise<Screen>,
+): Promise<Screen> {
+  const servers = await verifiedServers(ctx);
+  return handleServerPick(screen, text, ctx, chatId, servers, ctx.cat.msg.pickVerified, done);
+}
+
 /** 各流程共用的多選伺服器處理：切換勾選，按「選好了」交給 done 繼續。 */
 async function handleServerPick(
   screen: { type: ServerPickScreen; selectedIds: number[] },
@@ -1224,10 +1224,7 @@ async function handleServerPick(
   if (!server) {
     return renderServerPick(ctx, chatId, screen.type, servers, screen.selectedIds, miss);
   }
-  const next = screen.selectedIds.includes(server.id)
-    ? screen.selectedIds.filter((id) => id !== server.id)
-    : [...screen.selectedIds, server.id].sort((a, b) => a - b);
-  return renderServerPick(ctx, chatId, screen.type, servers, next);
+  return renderServerPick(ctx, chatId, screen.type, servers, toggleId(screen.selectedIds, server.id));
 }
 
 function extendDaysKeyboard(cat: Catalog): ReplyMarkup {
@@ -1343,4 +1340,9 @@ function commandOf(text: string): string | null {
 
 async function send(ctx: AppContext, chatId: number, text: string, markup?: ReplyMarkup): Promise<void> {
   await ctx.telegram.sendMessage(chatId, text, markup);
+}
+
+/** 操作結果：API 有回訊息用訊息（escape 後），沒有則用在地化的完成提示。 */
+async function sendActionResult(ctx: Req, chatId: number, message: string | null, markup: ReplyMarkup): Promise<void> {
+  await send(ctx, chatId, esc(message ?? ctx.cat.msg.actionDone), markup);
 }

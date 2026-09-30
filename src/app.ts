@@ -1,3 +1,4 @@
+import { setDateTimeZone } from "./format.ts";
 import { handleUpdate } from "./handler.ts";
 import { createTelegramClient } from "./telegram.ts";
 import type { AppConfig, SessionStore, TelegramApi, Update } from "./types.ts";
@@ -10,6 +11,7 @@ export interface App {
 }
 
 export function createApp(config: AppConfig, sessions: SessionStore, fetchImpl?: typeof fetch): App {
+  setDateTimeZone(config.timeZone);
   const wizarr = createWizarrClient({
     apiBase: config.wizarrApiBase,
     apiKey: config.wizarrApiKey,

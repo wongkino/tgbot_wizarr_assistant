@@ -68,6 +68,7 @@ curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
 | `WIZARR_PUBLIC_URL` | 邀请链接用的对外网址 |
 | `MODE` | `polling` 或 `webhook` |
 | `PORT` | HTTP 端口，默认 `8080`。`GET /health` 可做健康检查 |
+| `TIMEZONE` | 日期显示使用的 IANA 时区，默认 `Asia/Hong_Kong` |
 
 第一次不知道自己的 ID 时，先让 `TELEGRAM_ADMIN_IDS` 留空并启动，对机器人发 `/start`，它会回复 ID。写进 `docker/.env` 后再重建容器。
 

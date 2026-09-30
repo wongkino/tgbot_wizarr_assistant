@@ -6,7 +6,8 @@ export async function routeRequest(request: Request, app: App): Promise<Response
   if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
     return Response.json({ ok: true, mode: app.config.mode });
   }
-  if (request.method === "POST" && (url.pathname === "/telegram" || url.pathname === "/")) {
+  // 只在 webhook 模式接受更新；polling 模式下此端點沒有密鑰保護，必須關閉。
+  if (app.config.mode === "webhook" && request.method === "POST" && (url.pathname === "/telegram" || url.pathname === "/")) {
     return handleWebhook(request, app);
   }
   return new Response("not found", { status: 404 });

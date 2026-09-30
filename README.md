@@ -68,6 +68,7 @@ curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
 | `WIZARR_PUBLIC_URL` | Public URL used for invite links |
 | `MODE` | `polling` or `webhook` |
 | `PORT` | HTTP port, default `8080`. `GET /health` is a health check |
+| `TIMEZONE` | IANA time zone used when displaying dates, default `Asia/Hong_Kong` |
 
 If you don't know your ID yet, leave `TELEGRAM_ADMIN_IDS` empty, start the bot, and send `/start`; it replies with your ID. Then write it into `docker/.env` and rebuild the container.
 

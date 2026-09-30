@@ -62,6 +62,11 @@ export function createWizarrClient(options: WizarrClientOptions): WizarrApi {
     return data;
   }
 
+  /** 呼叫後只取訊息的操作（啟用、停用、刪除等）。 */
+  async function messageRequest(path: string, method: string): Promise<string | null> {
+    return messageOf(await request(path, { method }));
+  }
+
   return {
     async getStatus() {
       return parseStatus(await request("/status"));
@@ -74,13 +79,13 @@ export function createWizarrClient(options: WizarrClientOptions): WizarrApi {
       return users.sort((a, b) => a.username.localeCompare(b.username, "zh-Hant"));
     },
     async deleteUser(id) {
-      return messageOf(await request(`/users/${id}`, { method: "DELETE" }));
+      return messageRequest(`/users/${id}`, "DELETE");
     },
     async enableUser(id) {
-      return messageOf(await request(`/users/${id}/enable`, { method: "POST" }));
+      return messageRequest(`/users/${id}/enable`, "POST");
     },
     async disableUser(id) {
-      return messageOf(await request(`/users/${id}/disable`, { method: "POST" }));
+      return messageRequest(`/users/${id}/disable`, "POST");
     },
     async extendUser(id, days) {
       return parseExtend(await request(`/users/${id}/extend`, { method: "POST", body: { days } }));
@@ -104,7 +109,7 @@ export function createWizarrClient(options: WizarrClientOptions): WizarrApi {
       return parseInvitation(invitation, options.publicBase);
     },
     async deleteInvitation(id) {
-      return messageOf(await request(`/invitations/${id}`, { method: "DELETE" }));
+      return messageRequest(`/invitations/${id}`, "DELETE");
     },
     async listLibraries() {
       const libraries = asArray(asRecord(await request("/libraries"))?.libraries).map(parseLibrary);

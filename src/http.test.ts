@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { createApp } from "./app.ts";
-import { handleWebhook } from "./http.ts";
+import { handleWebhook, routeRequest } from "./http.ts";
 import { MemorySessionStore } from "./session.ts";
 import type { AppConfig } from "./types.ts";
 
@@ -15,6 +15,7 @@ const config: AppConfig = {
   wizarrPublicUrl: "https://wizarr.example",
   mode: "webhook",
   port: 8080,
+  timeZone: "Asia/Hong_Kong",
 };
 
 describe("webhook", () => {
@@ -67,5 +68,25 @@ describe("webhook", () => {
       failing,
     );
     assert.equal(response.status, 200);
+  });
+
+  it("polling 模式不接受 webhook 更新（端點無密鑰保護）", async () => {
+    const polling = createApp({ ...config, mode: "polling", webhookSecret: "" }, new MemorySessionStore(), async (input) => {
+      throw new Error(`不應連到 ${String(input)}`);
+    });
+    for (const path of ["/telegram", "/"]) {
+      const response = await routeRequest(
+        new Request(`http://local${path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            update_id: 3,
+            message: { message_id: 3, text: "/start", chat: { id: 7, type: "private" }, from: { id: 7 } },
+          }),
+        }),
+        polling,
+      );
+      assert.equal(response.status, 404, path);
+    }
   });
 });

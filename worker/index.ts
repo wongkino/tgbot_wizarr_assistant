@@ -10,6 +10,7 @@ export interface Env {
   WIZARR_URL?: string;
   WIZARR_API_KEY?: string;
   WIZARR_PUBLIC_URL?: string;
+  TIMEZONE?: string;
   SESSIONS?: KvLike;
 }
 
@@ -27,6 +28,7 @@ export default {
         WIZARR_URL: env.WIZARR_URL,
         WIZARR_API_KEY: env.WIZARR_API_KEY,
         WIZARR_PUBLIC_URL: env.WIZARR_PUBLIC_URL,
+        TIMEZONE: env.TIMEZONE,
         MODE: "webhook",
       });
     } catch (error) {

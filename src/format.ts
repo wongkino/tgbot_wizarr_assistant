@@ -47,12 +47,19 @@ export function link(url: string): string {
   return `<a href="${safe}">${safe}</a>`;
 }
 
+let dateTimeZone = "Asia/Hong_Kong";
+
+/** 設定 formatDate 使用的 IANA 時區；由 createApp 依設定帶入，未設定時為 Asia/Hong_Kong。 */
+export function setDateTimeZone(zone: string): void {
+  dateTimeZone = zone;
+}
+
 export function formatDate(cat: Catalog, value: string | null | undefined): string {
   if (!value) return cat.neverExpires;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return esc(value);
   return new Intl.DateTimeFormat(cat.dateLocale, {
-    timeZone: "Asia/Hong_Kong",
+    timeZone: dateTimeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

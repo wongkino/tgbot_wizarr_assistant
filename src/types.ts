@@ -218,6 +218,8 @@ export interface AppConfig {
   wizarrPublicUrl: string;
   mode: "polling" | "webhook";
   port: number;
+  /** 日期顯示使用的 IANA 時區名稱。 */
+  timeZone: string;
 }
 
 export interface AppContext {
