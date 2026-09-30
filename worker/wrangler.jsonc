@@ -1,0 +1,12 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "tgbot-wizarr-assistant",
+  "main": "index.ts",
+  "compatibility_date": "2026-09-30",
+  "kv_namespaces": [
+    {
+      "binding": "SESSIONS",
+      "id": "0123456789abcdef0123456789abcdef"
+    }
+  ]
+}

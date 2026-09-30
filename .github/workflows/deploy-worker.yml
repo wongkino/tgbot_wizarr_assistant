@@ -1,0 +1,82 @@
+name: Deploy Worker
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Bind KV namespace
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node bind-kv.mjs
+      - name: Deploy to Cloudflare
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: npm
+          workingDirectory: worker
+          command: deploy
+          secrets: |
+            TELEGRAM_BOT_TOKEN
+            TELEGRAM_ADMIN_IDS
+            TELEGRAM_WEBHOOK_SECRET
+            WIZARR_URL
+            WIZARR_API_KEY
+            WIZARR_PUBLIC_URL
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_IDS: ${{ secrets.TELEGRAM_ADMIN_IDS }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+          WIZARR_URL: ${{ secrets.WIZARR_URL }}
+          WIZARR_API_KEY: ${{ secrets.WIZARR_API_KEY }}
+          WIZARR_PUBLIC_URL: ${{ secrets.WIZARR_PUBLIC_URL }}
+      - name: Register Telegram webhook
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          set -euo pipefail
+          url="${DEPLOYMENT_URL%/}"
+          url="$(printf '%s' "$url" | sed -E 's#https://[A-Za-z0-9-]+-(tgbot-wizarr-assistant\.)#https://\1#')"
+          case "$url" in
+            https://tgbot-wizarr-assistant.*.workers.dev) ;;
+            *)
+              echo "部署完成，但無法從 ${DEPLOYMENT_URL} 得到穩定的 workers.dev 網址。請手動設定 Telegram webhook。"
+              exit 0
+              ;;
+          esac
+          curl -fsS "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+            -d "url=${url}/telegram" \
+            -d "secret_token=${TELEGRAM_WEBHOOK_SECRET}" \
+            -d 'allowed_updates=["message"]'
+          echo "Webhook 已指向 ${url}/telegram"

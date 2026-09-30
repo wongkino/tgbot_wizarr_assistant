@@ -1,0 +1,194 @@
+export interface StatusInfo {
+  users: number;
+  invites: number;
+  pending: number;
+  expired: number;
+}
+
+export interface UserInfo {
+  id: number;
+  username: string;
+  email: string | null;
+  server: string;
+  serverType: string;
+  expires: string | null;
+}
+
+export interface InvitationInfo {
+  id: number;
+  code: string;
+  url: string;
+  status: string;
+  created: string | null;
+  expires: string | null;
+  usedAt: string | null;
+  usedBy: string | null;
+  duration: string;
+  unlimited: boolean;
+  serverNames: string[];
+}
+
+export interface LibraryInfo {
+  id: number;
+  name: string;
+  externalId: string | null;
+  serverId: number | null;
+  serverName: string;
+  enabled: boolean;
+}
+
+export interface ServerInfo {
+  id: number;
+  name: string;
+  serverType: string;
+  serverUrl: string | null;
+  externalUrl: string | null;
+  verified: boolean;
+  allowDownloads: boolean;
+  allowLiveTv: boolean;
+  allowMobileUploads: boolean;
+}
+
+export interface CreateInvitationInput {
+  serverIds: number[];
+  expiresInDays: 1 | 7 | 30 | null;
+  duration: string;
+  unlimited: boolean;
+  libraryIds: number[];
+  allowDownloads: boolean;
+  allowLiveTv: boolean;
+  allowMobileUploads: boolean;
+}
+
+export interface PasswordResetInfo {
+  message: string;
+  url: string;
+  expiresAt: string | null;
+}
+
+export interface ExtendResult {
+  message: string;
+  newExpiry: string | null;
+}
+
+export interface WizarrApi {
+  getStatus(): Promise<StatusInfo>;
+  listUsers(query?: { username?: string }): Promise<UserInfo[]>;
+  deleteUser(id: number): Promise<string>;
+  enableUser(id: number): Promise<string>;
+  disableUser(id: number): Promise<string>;
+  extendUser(id: number, days: number): Promise<ExtendResult>;
+  resetPassword(id: number): Promise<PasswordResetInfo>;
+  listInvitations(): Promise<InvitationInfo[]>;
+  createInvitation(input: CreateInvitationInput): Promise<InvitationInfo>;
+  deleteInvitation(id: number): Promise<string>;
+  listLibraries(): Promise<LibraryInfo[]>;
+  listServers(): Promise<ServerInfo[]>;
+}
+
+export type ReplyButton = { text: string };
+
+export type ReplyMarkup =
+  | {
+      keyboard: ReplyButton[][];
+      resize_keyboard: true;
+      is_persistent: true;
+      input_field_placeholder?: string;
+    }
+  | { remove_keyboard: true };
+
+export interface TelegramApi {
+  sendMessage(chatId: number, text: string, markup?: ReplyMarkup): Promise<void>;
+  getUpdates(offset: number, signal?: AbortSignal): Promise<Update[]>;
+  deleteWebhook(): Promise<void>;
+}
+
+export interface TelegramUser {
+  id: number;
+}
+
+export interface TelegramChat {
+  id: number;
+  type: string;
+}
+
+export interface TelegramMessage {
+  message_id: number;
+  text?: string;
+  chat: TelegramChat;
+  from?: TelegramUser;
+}
+
+export interface Update {
+  update_id: number;
+  message?: TelegramMessage;
+}
+
+export type UserAction = "enable" | "disable" | "extend" | "delete" | "reset";
+
+export type InviteFilter = "all" | "pending" | "used" | "expired";
+
+export interface InviteDraft {
+  serverId?: number;
+  serverName?: string;
+  expiresInDays?: 1 | 7 | 30 | null;
+  duration?: string;
+  unlimited?: boolean;
+  useAllLibraries?: boolean;
+  libraryIds: number[];
+  libraryNames: string[];
+  allowDownloads: boolean;
+  allowLiveTv: boolean;
+  allowMobileUploads: boolean;
+}
+
+export type PendingAction =
+  | { kind: "disable_user"; userId: number; username: string }
+  | { kind: "delete_user"; userId: number; username: string }
+  | { kind: "delete_invite"; invitationId: number; code: string }
+  | { kind: "create_invite"; input: CreateInvitationInput; serverName: string };
+
+export type Screen =
+  | { type: "main" }
+  | { type: "users" }
+  | { type: "invites" }
+  | { type: "libraries" }
+  | { type: "servers" }
+  | { type: "user_list"; page: number }
+  | { type: "invite_list"; page: number; filter: InviteFilter }
+  | { type: "library_list"; page: number }
+  | { type: "server_list"; page: number }
+  | { type: "pick_user"; action: UserAction; page: number }
+  | { type: "extend_days"; userId: number; username: string }
+  | { type: "invite_server" }
+  | { type: "invite_expiry"; draft: InviteDraft }
+  | { type: "invite_duration"; draft: InviteDraft }
+  | { type: "invite_library_mode"; draft: InviteDraft }
+  | { type: "invite_library_pick"; draft: InviteDraft; page: number }
+  | { type: "invite_permissions"; draft: InviteDraft }
+  | { type: "delete_invite_pick"; page: number }
+  | { type: "confirm"; pending: PendingAction };
+
+export interface SessionStore {
+  get(key: string): Promise<Screen | null>;
+  set(key: string, value: Screen, ttlSeconds: number): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
+export interface AppConfig {
+  telegramToken: string;
+  webhookSecret: string;
+  adminIds: Set<number>;
+  wizarrApiBase: string;
+  wizarrApiKey: string;
+  wizarrPublicUrl: string;
+  mode: "polling" | "webhook";
+  port: number;
+}
+
+export interface AppContext {
+  config: AppConfig;
+  wizarr: WizarrApi;
+  telegram: TelegramApi;
+  sessions: SessionStore;
+}

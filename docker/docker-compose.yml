@@ -1,0 +1,14 @@
+services:
+  wizarr-bot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: tgbot-wizarr-assistant:local
+    restart: unless-stopped
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # polling 不需要對外開放。改用 webhook 時再取消註解。
+    # ports:
+    #   - "8080:8080"

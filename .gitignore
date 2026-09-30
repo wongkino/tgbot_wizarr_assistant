@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+docker/.env
+.dev.vars
+worker/.dev.vars
+.wrangler/
+worker/.wrangler/
+*.log
