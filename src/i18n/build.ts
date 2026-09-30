@@ -95,6 +95,8 @@ export interface CatalogStrings {
     lineExpiry: string;
     /** {duration} */
     lineDuration: string;
+    /** 快速設定的預設伺服器行：{servers} */
+    lineServers: string;
     /** {libraries} */
     lineLibraries: string;
     /** 摘要裡單台伺服器的格式：{name} {id} */
@@ -164,6 +166,13 @@ export interface CatalogStrings {
     permissionsSaved: string;
     noEmbySettings: string;
     chooseEmbySettings: string;
+    /** 預設伺服器的選擇提示 */
+    chooseEmbyServersSettings: string;
+    noEmbyServersSettings: string;
+    serversSaved: string;
+    askServersSaved: string;
+    /** 預設伺服器比對不到：{missing} {settingsButton} */
+    quickMissingServers: string;
     allLibrariesSaved: string;
     pickOneLibrary: string;
     librariesSaved: string;
@@ -324,9 +333,11 @@ export function buildCatalog(s: CatalogStrings): Catalog {
     quickSettingsBody: (settings) => {
       const libraries =
         settings.libraries === null ? s.words.allEnabledLibraries : join(settings.libraries.map((item) => esc(item.name)));
+      const servers = settings.servers === null ? s.buttons.askServersEverytime : join(settings.servers.map(esc));
       return [
         tpl(s.tpl.lineExpiry, { expiry: expiryLabel(settings.expiresInDays) }),
         tpl(s.tpl.lineDuration, { duration: esc(durationLabel(settings.duration, settings.unlimited)) }),
+        tpl(s.tpl.lineServers, { servers }),
         tpl(s.tpl.lineLibraries, { libraries }),
         ...permissionLines(settings),
       ];
@@ -384,7 +395,7 @@ export function buildCatalog(s: CatalogStrings): Catalog {
       pickEmbyVerified: s.msg.pickEmbyVerified,
       pickVerified: s.msg.pickVerified,
       quickMissingLibraries: (missing, settingsButton) =>
-        tpl(s.msg.quickMissingLibraries, { missing: join(missing), settingsButton }),
+        tpl(s.msg.quickMissingLibraries, { missing: join(missing.map(esc)), settingsButton }),
       quickReuseTitle: s.msg.quickReuseTitle,
       inviteCreatedTitle: s.msg.inviteCreatedTitle,
       settingsExpiryPrompt: s.msg.settingsExpiryPrompt,
@@ -399,6 +410,12 @@ export function buildCatalog(s: CatalogStrings): Catalog {
       permissionsSaved: s.msg.permissionsSaved,
       noEmbySettings: s.msg.noEmbySettings,
       chooseEmbySettings: s.msg.chooseEmbySettings,
+      chooseEmbyServersSettings: s.msg.chooseEmbyServersSettings,
+      noEmbyServersSettings: s.msg.noEmbyServersSettings,
+      serversSaved: s.msg.serversSaved,
+      askServersSaved: s.msg.askServersSaved,
+      quickMissingServers: (missing, settingsButton) =>
+        tpl(s.msg.quickMissingServers, { missing: join(missing.map(esc)), settingsButton }),
       allLibrariesSaved: s.msg.allLibrariesSaved,
       pickOneLibrary: s.msg.pickOneLibrary,
       librariesSaved: s.msg.librariesSaved,

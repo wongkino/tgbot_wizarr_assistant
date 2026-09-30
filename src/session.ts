@@ -26,6 +26,7 @@ export const SCREEN_PARENT = {
   settings_permissions: "settings",
   settings_library_server: "settings",
   settings_library_pick: "settings",
+  settings_server: "settings",
   settings_lang: "settings",
   confirm: "main",
 } as const satisfies Record<Screen["type"], "main" | "users" | "invites" | "libraries" | "servers" | "settings">;
@@ -52,6 +53,7 @@ export function isScreen(value: unknown): value is Screen {
     case "invite_server":
     case "quick_invite_server":
     case "settings_library_server":
+    case "settings_server":
       return Array.isArray(record.selectedIds) && (record.selectedIds as unknown[]).every(isNumber);
     case "user_list":
     case "library_list":

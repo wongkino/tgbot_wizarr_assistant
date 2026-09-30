@@ -82,6 +82,8 @@ export interface QuickInviteSettings extends PermissionFlags {
   duration: string;
   unlimited: boolean;
   libraries: QuickLibraryMatcher[] | null;
+  /** 預設伺服器名稱（用名稱比對，ID 可能變）；null 表示每次手動選擇。 */
+  servers: string[] | null;
 }
 
 export interface PasswordResetInfo {
@@ -198,6 +200,7 @@ export type Screen =
   | { type: "settings_permissions"; permissions: PermissionFlags }
   | { type: "settings_library_server"; selectedIds: number[] }
   | { type: "settings_library_pick"; serverIds: number[]; selectedIds: number[]; page: number }
+  | { type: "settings_server"; selectedIds: number[] }
   | { type: "settings_lang" }
   | { type: "confirm"; pending: PendingAction };
 

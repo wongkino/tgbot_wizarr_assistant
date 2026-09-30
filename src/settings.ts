@@ -13,6 +13,7 @@ export function defaultQuickSettings(): QuickInviteSettings {
     allowLiveTv: false,
     allowMobileUploads: false,
     libraries: null,
+    servers: null,
   };
 }
 
@@ -42,6 +43,8 @@ export function parseQuickSettings(value: unknown): QuickInviteSettings | null {
   if (typeof record.allowMobileUploads !== "boolean") return null;
   const libraries = parseMatchers(record.libraries);
   if (libraries === undefined) return null;
+  const servers = parseServerNames(record.servers);
+  if (servers === undefined) return null;
   return {
     expiresInDays: expiresInDays as QuickInviteSettings["expiresInDays"],
     duration: record.duration,
@@ -50,7 +53,21 @@ export function parseQuickSettings(value: unknown): QuickInviteSettings | null {
     allowLiveTv: record.allowLiveTv,
     allowMobileUploads: record.allowMobileUploads,
     libraries,
+    // 空陣列視同不預設（每次選擇）
+    servers: servers?.length ? servers : null,
   };
+}
+
+function parseServerNames(value: unknown): string[] | null | undefined {
+  // 舊版設定沒有這個欄位，視同不預設
+  if (value === null || value === undefined) return null;
+  if (!Array.isArray(value)) return undefined;
+  const names: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string" || !item) return undefined;
+    names.push(item);
+  }
+  return names;
 }
 
 function parseMatchers(value: unknown): QuickLibraryMatcher[] | null | undefined {
@@ -75,14 +92,24 @@ export function sameQuickSettings(a: QuickInviteSettings, b: QuickInviteSettings
     a.allowDownloads === b.allowDownloads &&
     a.allowLiveTv === b.allowLiveTv &&
     a.allowMobileUploads === b.allowMobileUploads &&
-    sameMatchers(a.libraries, b.libraries)
+    sameMatchers(a.libraries, b.libraries) &&
+    sameNames(a.servers, b.servers)
   );
+}
+
+function sameNames(a: string[] | null, b: string[] | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.length !== b.length) return false;
+  const left = [...a].sort();
+  const right = [...b].sort();
+  return left.every((name, index) => name === right[index]);
 }
 
 function sameMatchers(a: QuickLibraryMatcher[] | null, b: QuickLibraryMatcher[] | null): boolean {
   if (a === null || b === null) return a === b;
   if (a.length !== b.length) return false;
-  const keys = (list: QuickLibraryMatcher[]) => list.map((item) => `${item.name}\0${item.externalId ?? ""}`).sort();  const left = keys(a);
+  const keys = (list: QuickLibraryMatcher[]) => list.map((item) => `${item.name}\0${item.externalId ?? ""}`).sort();
+  const left = keys(a);
   const right = keys(b);
   return left.every((key, index) => key === right[index]);
 }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { isScreen, KvSessionStore, MemorySessionStore } from "./session.ts";
+import { isScreen, KvSessionStore, MemorySessionStore, SCREEN_PARENT } from "./session.ts";
 
 describe("工作階段", () => {
   it("損壞的確認畫面會被捨棄", async () => {
@@ -50,4 +50,65 @@ describe("工作階段", () => {
     assert.equal(isScreen({ type: "settings_library_pick", serverIds: [1], selectedIds: [3], page: "0" }), false);
     assert.equal(isScreen({ type: "settings_library_pick", serverId: 1, selectedIds: [3], page: 0 }), false);
   });
+
+  it("settings_server 畫面需要 selectedIds", () => {
+    assert.equal(isScreen({ type: "settings_server", selectedIds: [] }), true);
+    assert.equal(isScreen({ type: "settings_server", selectedIds: [1, 2] }), true);
+    assert.equal(isScreen({ type: "settings_server" }), false);
+    assert.equal(isScreen({ type: "settings_server", selectedIds: ["1"] }), false);
+  });
+
+  it("SCREEN_PARENT 涵蓋所有畫面類型", () => {
+    // 每個 Screen 類型都要能被 isScreen 接受（至少一個合法樣本），否則 KV 版會靜靜掉回主選單
+    const samples: Record<string, unknown> = {
+      main: { type: "main" },
+      users: { type: "users" },
+      invites: { type: "invites" },
+      libraries: { type: "libraries" },
+      servers: { type: "servers" },
+      settings: { type: "settings" },
+      user_list: { type: "user_list", page: 0 },
+      invite_list: { type: "invite_list", page: 0, filter: "all" },
+      library_list: { type: "library_list", page: 0 },
+      server_list: { type: "server_list", page: 0 },
+      pick_user: { type: "pick_user", action: "enable", page: 0 },
+      extend_days: { type: "extend_days", userId: 1, username: "alice" },
+      invite_server: { type: "invite_server", selectedIds: [] },
+      quick_invite_server: { type: "quick_invite_server", selectedIds: [] },
+      invite_expiry: { type: "invite_expiry", draft: draftSample() },
+      invite_duration: { type: "invite_duration", draft: draftSample() },
+      invite_library_mode: { type: "invite_library_mode", draft: draftSample() },
+      invite_library_pick: { type: "invite_library_pick", draft: draftSample(), page: 0 },
+      invite_permissions: { type: "invite_permissions", draft: draftSample() },
+      delete_invite_pick: { type: "delete_invite_pick", page: 0 },
+      settings_expiry: { type: "settings_expiry" },
+      settings_duration: { type: "settings_duration" },
+      settings_permissions: {
+        type: "settings_permissions",
+        permissions: { allowDownloads: false, allowLiveTv: false, allowMobileUploads: false },
+      },
+      settings_library_server: { type: "settings_library_server", selectedIds: [] },
+      settings_library_pick: { type: "settings_library_pick", serverIds: [1], selectedIds: [], page: 0 },
+      settings_server: { type: "settings_server", selectedIds: [] },
+      settings_lang: { type: "settings_lang" },
+      confirm: { type: "confirm", pending: { kind: "delete_invite", invitationId: 1, code: "ABCD" } },
+    };
+    for (const [type, sample] of Object.entries(samples)) {
+      assert.equal(isScreen(sample), true, `screen 類型 ${type} 應通過 isScreen`);
+    }
+    // 樣本表與 SCREEN_PARENT 同步，避免漏加新類型
+    assert.deepEqual(Object.keys(samples).sort(), Object.keys(SCREEN_PARENT).sort());
+  });
 });
+
+function draftSample() {
+  return {
+    serverIds: [1],
+    serverNames: ["Emby"],
+    libraryIds: [],
+    libraryNames: [],
+    allowDownloads: false,
+    allowLiveTv: false,
+    allowMobileUploads: false,
+  };
+}

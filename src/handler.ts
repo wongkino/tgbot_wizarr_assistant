@@ -254,6 +254,8 @@ async function dispatch(
       return handleSettingsPermissions(screen, text, ctx, chatId);
     case "settings_library_server":
       return handleSettingsLibraryServer(screen, text, ctx, chatId);
+    case "settings_server":
+      return handleSettingsServer(screen, text, ctx, chatId);
     case "settings_library_pick":
       return handleSettingsLibraryPick(screen, text, ctx, chatId);
     case "settings_lang":
@@ -403,7 +405,15 @@ async function showInviteList(
 }
 
 async function beginQuickInvite(ctx: Req, chatId: number): Promise<Screen> {
-  return chooseServers(ctx, chatId, "quick_invite_server", await embyServers(ctx), {
+  const servers = await embyServers(ctx);
+  const settings = await loadQuickSettings(ctx.sessions);
+  if (settings.servers !== null) {
+    const { selected, missing } = matchServers(servers, settings.servers);
+    if (selected.length && !missing.length) return createQuickInvite(ctx, chatId, selected);
+    await send(ctx, chatId, ctx.cat.msg.quickMissingServers(missing, ctx.cat.buttons.settings), invitesKeyboard(ctx.cat));
+    return { type: "invites" };
+  }
+  return chooseServers(ctx, chatId, "quick_invite_server", servers, {
     empty: { message: ctx.cat.msg.noEmbyQuick, keyboard: invitesKeyboard(ctx.cat), screen: { type: "invites" } },
     single: (servers) => createQuickInvite(ctx, chatId, servers),
   });
@@ -486,6 +496,18 @@ function inviteReusable(invite: InvitationInfo, now: number): boolean {
   if ((invite.status !== "pending" && invite.status !== "used") || !invite.expires) return false;
   const time = Date.parse(invite.expires);
   return !Number.isNaN(time) && time > now;
+}
+
+/** 用名稱比對預設伺服器；回傳比對到的伺服器與找不到的名稱。 */
+function matchServers(servers: ServerInfo[], names: string[]): { selected: ServerInfo[]; missing: string[] } {
+  const selected = new Map<number, ServerInfo>();
+  const missing: string[] = [];
+  for (const name of names) {
+    const matches = servers.filter((server) => server.name === name);
+    if (!matches.length) missing.push(name);
+    for (const server of matches) selected.set(server.id, server);
+  }
+  return { selected: [...selected.values()].sort((a, b) => a.id - b.id), missing };
 }
 
 function matchLibraries(
@@ -595,6 +617,7 @@ async function handleSettingsMenu(text: string, ctx: Req, chatId: number): Promi
     return { type: "settings_permissions", permissions };
   }
   if (text === B.setLibraries) return beginSettingsLibraries(ctx, chatId);
+  if (text === B.setServers) return beginSettingsServers(ctx, chatId);
   if (text === B.setLanguage) {
     await send(ctx, chatId, ctx.cat.msg.chooseLanguage, languageKeyboard());
     return { type: "settings_lang" };
@@ -673,6 +696,36 @@ async function beginSettingsLibraries(ctx: Req, chatId: number): Promise<Screen>
       const enabled = await enabledLibraries(ctx, serverIds);
       return renderSettingsLibraryPick(ctx, chatId, serverIds, await selectedLibraryIds(ctx, enabled), 0, enabled);
     },
+  });
+}
+
+async function beginSettingsServers(ctx: Req, chatId: number): Promise<Screen> {
+  const servers = await embyServers(ctx);
+  if (!servers.length) {
+    await send(ctx, chatId, ctx.cat.msg.noEmbyServersSettings, settingsKeyboard(ctx.cat));
+    return { type: "settings" };
+  }
+  const settings = await loadQuickSettings(ctx.sessions);
+  const selectedIds = settings.servers === null ? [] : matchServers(servers, settings.servers).selected.map((s) => s.id);
+  return renderServerPick(ctx, chatId, "settings_server", servers, selectedIds);
+}
+
+async function handleSettingsServer(
+  screen: Extract<Screen, { type: "settings_server" }>,
+  text: string,
+  ctx: Req,
+  chatId: number,
+): Promise<Screen> {
+  if (text === ctx.cat.buttons.askServersEverytime) {
+    const settings = await loadQuickSettings(ctx.sessions);
+    await saveQuickSettings(ctx.sessions, { ...settings, servers: null });
+    return showSettings(ctx, chatId, ctx.cat.msg.askServersSaved);
+  }
+  const servers = await embyServers(ctx);
+  return handleServerPick(screen, text, ctx, chatId, servers, ctx.cat.msg.pickEmbyVerified, async (chosen) => {
+    const settings = await loadQuickSettings(ctx.sessions);
+    await saveQuickSettings(ctx.sessions, { ...settings, servers: chosen.map((server) => server.name).sort() });
+    return showSettings(ctx, chatId, ctx.cat.msg.serversSaved);
   });
 }
 
@@ -1136,8 +1189,8 @@ function toInvitationInput(draft: InviteDraft): CreateInvitationInput | null {
   };
 }
 
-/** 三種多選伺服器畫面的 screen 型別名稱。 */
-type ServerPickScreen = "invite_server" | "quick_invite_server" | "settings_library_server";
+/** 四種多選伺服器畫面的 screen 型別名稱。 */
+type ServerPickScreen = "invite_server" | "quick_invite_server" | "settings_library_server" | "settings_server";
 
 /** 三種流程共用的入口：0 台顯示空狀態、1 台直接進入 single、多台進入多選畫面。 */
 async function chooseServers(
@@ -1172,18 +1225,26 @@ async function renderServerPick(
       ? `${ctx.cat.msg.chooseEmbyQuick}\n\n${formatServerLines(ctx.cat, servers)}`
       : type === "settings_library_server"
         ? `${ctx.cat.msg.chooseEmbySettings}\n\n${formatServerLines(ctx.cat, servers)}`
-        : formatServerChoices(ctx.cat, servers);
-  await send(ctx, chatId, notice ? `${notice}\n\n${base}` : base, serverMultiKeyboard(ctx.cat, servers, selectedIds));
+        : type === "settings_server"
+          ? `${ctx.cat.msg.chooseEmbyServersSettings}\n\n${formatServerLines(ctx.cat, servers)}`
+          : formatServerChoices(ctx.cat, servers);
+  const extraRow = type === "settings_server" ? [ctx.cat.buttons.askServersEverytime] : undefined;
+  await send(
+    ctx,
+    chatId,
+    notice ? `${notice}\n\n${base}` : base,
+    serverMultiKeyboard(ctx.cat, servers, selectedIds, extraRow),
+  );
   return { type, selectedIds };
 }
 
-function serverMultiKeyboard(cat: Catalog, servers: ServerInfo[], selectedIds: number[]): ReplyMarkup {
+function serverMultiKeyboard(cat: Catalog, servers: ServerInfo[], selectedIds: number[], extraRow?: string[]): ReplyMarkup {
   return markup(
     choiceRows(
       cat,
       servers.map((server) => serverButton(cat, server.id, selectedIds.includes(server.id))),
       undefined,
-      [[cat.buttons.serversDone]],
+      [extraRow ? [cat.buttons.serversDone, ...extraRow] : [cat.buttons.serversDone]],
     ),
     cat.ph.chooseServer,
   );
