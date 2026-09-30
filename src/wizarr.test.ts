@@ -121,8 +121,62 @@ describe("createWizarrClient", () => {
       assert.ok(error instanceof WizarrError);
       assert.equal(error.message, "Server IDs [9] not found");
       assert.equal(error.status, 400);
+      assert.equal(error.connection, false);
       return true;
     });
+  });
+
+  it("連線失敗時標記 connection，訊息只帶原始原因", async () => {
+    const client = createWizarrClient({
+      apiBase: "https://wizarr.example/api",
+      apiKey: "k",
+      publicBase: "https://wizarr.example",
+      fetchImpl: async () => {
+        throw new Error("fetch failed");
+      },
+    });
+    await assert.rejects(() => client.listServers(), (error: unknown) => {
+      assert.ok(error instanceof WizarrError);
+      assert.equal(error.message, "fetch failed");
+      assert.equal(error.status, 0);
+      assert.equal(error.connection, true);
+      return true;
+    });
+  });
+
+  it("缺欄位時回傳中性值，不含任何語言的寫死文字", async () => {
+    const client = createWizarrClient({
+      apiBase: "https://wizarr.example/api",
+      apiKey: "k",
+      publicBase: "https://wizarr.example",
+      fetchImpl: async (input) => {
+        const url = String(input);
+        if (url.includes("/users")) return new Response(JSON.stringify({ users: [{ id: 12 }] }), { status: 200 });
+        if (url.includes("/libraries"))
+          return new Response(JSON.stringify({ libraries: [{ id: 3, server_id: 1 }] }), { status: 200 });
+        return new Response(JSON.stringify({ servers: [{ id: 5 }] }), { status: 200 });
+      },
+    });
+    const [user] = await client.listUsers();
+    assert.equal(user?.username, "");
+    assert.equal(user?.server, "");
+    const [library] = await client.listLibraries();
+    assert.equal(library?.name, "");
+    assert.equal(library?.serverName, "");
+    const [server] = await client.listServers();
+    assert.equal(server?.name, "");
+  });
+
+  it("操作結果缺少 message 時回傳 null", async () => {
+    const client = createWizarrClient({
+      apiBase: "https://wizarr.example/api",
+      apiKey: "k",
+      publicBase: "https://wizarr.example",
+      fetchImpl: async () => new Response("{}", { status: 200 }),
+    });
+    assert.equal(await client.deleteUser(1), null);
+    assert.equal((await client.extendUser(1, 7)).message, null);
+    assert.equal((await client.resetPassword(1)).message, null);
   });
 });
 

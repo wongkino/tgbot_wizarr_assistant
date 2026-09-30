@@ -132,7 +132,12 @@ export async function handleUpdate(update: Update, ctx: AppContext): Promise<voi
     if (!(error instanceof WizarrError)) {
       console.error("[bot]", error instanceof Error ? error.message : error);
     }
-    const detail = error instanceof WizarrError ? cat.msg.wizarrError(esc(error.message)) : cat.msg.genericError;
+    const detail =
+      error instanceof WizarrError
+        ? error.connection
+          ? cat.msg.wizarrUnreachable(esc(error.message))
+          : cat.msg.wizarrError(esc(error.message))
+        : cat.msg.genericError;
     try {
       await send(ctx, chatId, detail, keyboardFor(cat, screen));
     } catch (sendError) {
@@ -267,7 +272,7 @@ async function showUserList(ctx: Req, chatId: number, page: number): Promise<Scr
   const shown = await showList(
     ctx,
     chatId,
-    await ctx.wizarr.listUsers(),
+    await listUsersNamed(ctx),
     page,
     PAGE.users,
     (view) => formatUserList(ctx.cat, view),
@@ -277,7 +282,7 @@ async function showUserList(ctx: Req, chatId: number, page: number): Promise<Scr
 }
 
 async function beginPickUser(ctx: Req, chatId: number, action: UserAction, page: number): Promise<Screen> {
-  const users = await ctx.wizarr.listUsers();
+  const users = await listUsersNamed(ctx);
   if (!users.length) {
     await send(ctx, chatId, ctx.cat.msg.noUsers, usersKeyboard(ctx.cat));
     return { type: "users" };
@@ -304,7 +309,7 @@ async function handlePickUser(
   chatId: number,
 ): Promise<Screen> {
   const B = ctx.cat.buttons;
-  const users = await ctx.wizarr.listUsers();
+  const users = await listUsersNamed(ctx);
   if (text === B.prev || text === B.next) {
     return renderPickUser(ctx, chatId, screen.action, users, shiftPage(B, screen.page, text));
   }
@@ -317,7 +322,7 @@ async function handlePickUser(
 
   if (screen.action === "enable") {
     const message = await ctx.wizarr.enableUser(user.id);
-    await send(ctx, chatId, esc(message), usersKeyboard(ctx.cat));
+    await send(ctx, chatId, esc(message ?? ctx.cat.msg.actionDone), usersKeyboard(ctx.cat));
     return { type: "users" };
   }
   if (screen.action === "reset") {
@@ -326,7 +331,7 @@ async function handlePickUser(
       ctx,
       chatId,
       [
-        esc(reset.message),
+        esc(reset.message ?? ctx.cat.msg.resetDone),
         ctx.cat.msg.userLine(user.username, user.id),
         ctx.cat.msg.linkLine(link(reset.url)),
         ctx.cat.msg.expiresLine(formatDate(ctx.cat, reset.expiresAt)),
@@ -369,7 +374,7 @@ async function handleExtendDays(
   await send(
     ctx,
     chatId,
-    `${esc(result.message)}\n${ctx.cat.msg.newExpiryLine(formatDate(ctx.cat, result.newExpiry))}`,
+    `${esc(result.message ?? ctx.cat.msg.extendDone)}\n${ctx.cat.msg.newExpiryLine(formatDate(ctx.cat, result.newExpiry))}`,
     usersKeyboard(ctx.cat),
   );
   return { type: "users" };
@@ -558,7 +563,7 @@ async function embyServers(ctx: Req): Promise<ServerInfo[]> {
 }
 
 async function verifiedServers(ctx: Req): Promise<ServerInfo[]> {
-  return (await ctx.wizarr.listServers()).filter((server) => server.verified);
+  return (await listServersNamed(ctx)).filter((server) => server.verified);
 }
 
 async function showSettings(ctx: Req, chatId: number, notice?: string): Promise<Screen> {
@@ -993,17 +998,17 @@ async function handleConfirm(pending: PendingAction, text: string, ctx: Req, cha
 
   if (pending.kind === "disable_user") {
     const message = await ctx.wizarr.disableUser(pending.userId);
-    await send(ctx, chatId, esc(message), usersKeyboard(ctx.cat));
+    await send(ctx, chatId, esc(message ?? ctx.cat.msg.actionDone), usersKeyboard(ctx.cat));
     return { type: "users" };
   }
   if (pending.kind === "delete_user") {
     const message = await ctx.wizarr.deleteUser(pending.userId);
-    await send(ctx, chatId, esc(message), usersKeyboard(ctx.cat));
+    await send(ctx, chatId, esc(message ?? ctx.cat.msg.actionDone), usersKeyboard(ctx.cat));
     return { type: "users" };
   }
   if (pending.kind === "delete_invite") {
     const message = await ctx.wizarr.deleteInvitation(pending.invitationId);
-    await send(ctx, chatId, esc(message), invitesKeyboard(ctx.cat));
+    await send(ctx, chatId, esc(message ?? ctx.cat.msg.actionDone), invitesKeyboard(ctx.cat));
     return { type: "invites" };
   }
 
@@ -1042,7 +1047,7 @@ async function showLibraries(ctx: Req, chatId: number, page: number): Promise<Sc
   const shown = await showList(
     ctx,
     chatId,
-    await ctx.wizarr.listLibraries(),
+    await listLibrariesNamed(ctx),
     page,
     PAGE.libraries,
     (view) => formatLibraries(ctx.cat, view),
@@ -1055,7 +1060,7 @@ async function showServers(ctx: Req, chatId: number, page: number): Promise<Scre
   const shown = await showList(
     ctx,
     chatId,
-    await ctx.wizarr.listServers(),
+    await listServersNamed(ctx),
     page,
     PAGE.servers,
     (view) => formatServers(ctx.cat, view),
@@ -1079,8 +1084,32 @@ async function showList<T>(
 }
 
 async function enabledLibraries(ctx: Req, serverIds: number[]): Promise<LibraryInfo[]> {
-  const libraries = await ctx.wizarr.listLibraries();
+  const libraries = await listLibrariesNamed(ctx);
   return libraries.filter((library) => library.enabled && library.serverId != null && serverIds.includes(library.serverId));
+}
+
+/** 以下三個 helper：API 缺欄位時名稱會是空字串，這裡補上使用者語言的顯示名。 */
+async function listUsersNamed(ctx: Req): Promise<UserInfo[]> {
+  const users = await ctx.wizarr.listUsers();
+  return users.map((user) => ({
+    ...user,
+    username: user.username || ctx.cat.msg.userFallbackName(user.id),
+    server: user.server || ctx.cat.msg.unknownServer,
+  }));
+}
+
+async function listServersNamed(ctx: Req): Promise<ServerInfo[]> {
+  const servers = await ctx.wizarr.listServers();
+  return servers.map((server) => ({ ...server, name: server.name || ctx.cat.msg.serverFallbackName(server.id) }));
+}
+
+async function listLibrariesNamed(ctx: Req): Promise<LibraryInfo[]> {
+  const libraries = await ctx.wizarr.listLibraries();
+  return libraries.map((library) => ({
+    ...library,
+    name: library.name || ctx.cat.msg.libraryFallbackName(library.id),
+    serverName: library.serverName || ctx.cat.msg.unknownServer,
+  }));
 }
 
 function findUser(cat: Catalog, users: UserInfo[], text: string): UserInfo | undefined {

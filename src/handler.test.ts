@@ -968,4 +968,34 @@ describe("回覆鍵盤", () => {
     await run(B.status, ctx);
     assert.match(ctx.telegram.last().text, /Unauthorized/);
   });
+
+  it("連線失敗時顯示在地化的無法連線訊息", async () => {
+    const wizarr = fakeWizarr({
+      async getStatus() {
+        throw new WizarrError("fetch failed", 0, true);
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.status, ctx);
+    assert.match(ctx.telegram.last().text, /無法連線 Wizarr：fetch failed/);
+  });
+
+  it("API 缺名稱欄位時用在地化顯示名", async () => {
+    const wizarr = fakeWizarr({
+      async listUsers() {
+        return [{ id: 12, username: "", email: null, server: "", serverType: "emby", expires: null }];
+      },
+      async enableUser() {
+        return null;
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.listUsers, ctx);
+    assert.match(ctx.telegram.last().text, /使用者 12/);
+    assert.match(ctx.telegram.last().text, /未知伺服器/);
+    // 啟用後 API 沒回訊息時，顯示在地化的完成提示
+    await run(B.enableUser, ctx);
+    await run(userButton(cat, 12), ctx);
+    assert.match(ctx.telegram.last().text, /完成。/);
+  });
 });

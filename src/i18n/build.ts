@@ -116,6 +116,8 @@ export interface CatalogStrings {
     privateOnly: string;
     /** {detail} */
     wizarrError: string;
+    /** fetch 層級連線失敗：{detail} */
+    wizarrUnreachable: string;
     genericError: string;
     useKeyboard: string;
     useKeyboardHelp: string;
@@ -167,6 +169,18 @@ export interface CatalogStrings {
     librariesSaved: string;
     /** {id} */
     libraryFallbackName: string;
+    /** API 缺欄位時的使用者顯示名：{id} */
+    userFallbackName: string;
+    /** API 缺欄位時的伺服器顯示名：{id} */
+    serverFallbackName: string;
+    /** API 缺欄位時的伺服器名（無 ID 可用時） */
+    unknownServer: string;
+    /** API 沒回訊息時的操作完成提示 */
+    actionDone: string;
+    /** API 沒回訊息時的延長完成提示 */
+    extendDone: string;
+    /** API 沒回訊息時的重設密碼完成提示 */
+    resetDone: string;
     noServers: string;
     pickOneServer: string;
     /** {serverName}（多台時已預先 join） */
@@ -346,6 +360,7 @@ export function buildCatalog(s: CatalogStrings): Catalog {
     msg: {
       privateOnly: s.msg.privateOnly,
       wizarrError: (detail) => tpl(s.msg.wizarrError, { detail }),
+      wizarrUnreachable: (detail) => tpl(s.msg.wizarrUnreachable, { detail }),
       genericError: s.msg.genericError,
       useKeyboard: s.msg.useKeyboard,
       useKeyboardHelp: s.msg.useKeyboardHelp,
@@ -388,6 +403,12 @@ export function buildCatalog(s: CatalogStrings): Catalog {
       pickOneLibrary: s.msg.pickOneLibrary,
       librariesSaved: s.msg.librariesSaved,
       libraryFallbackName: (id) => tpl(s.msg.libraryFallbackName, { id }),
+      userFallbackName: (id) => tpl(s.msg.userFallbackName, { id }),
+      serverFallbackName: (id) => tpl(s.msg.serverFallbackName, { id }),
+      unknownServer: s.msg.unknownServer,
+      actionDone: s.msg.actionDone,
+      extendDone: s.msg.extendDone,
+      resetDone: s.msg.resetDone,
       noServers: s.msg.noServers,
       pickOneServer: s.msg.pickOneServer,
       inviteServerExpiryPrompt: (serverNames) =>

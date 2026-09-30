@@ -140,6 +140,8 @@ export interface Catalog {
   msg: {
     privateOnly: string;
     wizarrError(detail: string): string;
+    /** fetch 層級的連線失敗（無 HTTP 回應）。 */
+    wizarrUnreachable(detail: string): string;
     genericError: string;
     useKeyboard: string;
     useKeyboardHelp: string;
@@ -181,6 +183,18 @@ export interface Catalog {
     pickOneLibrary: string;
     librariesSaved: string;
     libraryFallbackName(id: number): string;
+    /** API 缺欄位時的使用者顯示名。 */
+    userFallbackName(id: number): string;
+    /** API 缺欄位時的伺服器顯示名。 */
+    serverFallbackName(id: number): string;
+    /** API 缺欄位時的伺服器名（無 ID 可用時）。 */
+    unknownServer: string;
+    /** API 沒回訊息時的操作完成提示。 */
+    actionDone: string;
+    /** API 沒回訊息時的延長完成提示。 */
+    extendDone: string;
+    /** API 沒回訊息時的重設密碼完成提示。 */
+    resetDone: string;
     noServers: string;
     pickOneServer: string;
     inviteServerExpiryPrompt(serverNames: string[]): string;

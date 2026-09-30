@@ -7,8 +7,10 @@ export interface StatusInfo {
 
 export interface UserInfo {
   id: number;
+  /** 缺欄位時為空字串，由 handler 依使用者語言補上顯示名。 */
   username: string;
   email: string | null;
+  /** 缺欄位時為空字串，由 handler 依使用者語言補上顯示名。 */
   server: string;
   serverType: string;
   expires: string | null;
@@ -31,15 +33,18 @@ export interface InvitationInfo {
 
 export interface LibraryInfo {
   id: number;
+  /** 缺欄位時為空字串，由 handler 依使用者語言補上顯示名。 */
   name: string;
   externalId: string | null;
   serverId: number | null;
+  /** 缺欄位時為空字串，由 handler 依使用者語言補上顯示名。 */
   serverName: string;
   enabled: boolean;
 }
 
 export interface ServerInfo {
   id: number;
+  /** 缺欄位時為空字串，由 handler 依使用者語言補上顯示名。 */
   name: string;
   serverType: string;
   serverUrl: string | null;
@@ -80,27 +85,29 @@ export interface QuickInviteSettings extends PermissionFlags {
 }
 
 export interface PasswordResetInfo {
-  message: string;
+  /** API 回傳的訊息；缺欄位時為 null，由 handler 依使用者語言補上。 */
+  message: string | null;
   url: string;
   expiresAt: string | null;
 }
 
 export interface ExtendResult {
-  message: string;
+  /** API 回傳的訊息；缺欄位時為 null，由 handler 依使用者語言補上。 */
+  message: string | null;
   newExpiry: string | null;
 }
 
 export interface WizarrApi {
   getStatus(): Promise<StatusInfo>;
   listUsers(query?: { username?: string }): Promise<UserInfo[]>;
-  deleteUser(id: number): Promise<string>;
-  enableUser(id: number): Promise<string>;
-  disableUser(id: number): Promise<string>;
+  deleteUser(id: number): Promise<string | null>;
+  enableUser(id: number): Promise<string | null>;
+  disableUser(id: number): Promise<string | null>;
   extendUser(id: number, days: number): Promise<ExtendResult>;
   resetPassword(id: number): Promise<PasswordResetInfo>;
   listInvitations(): Promise<InvitationInfo[]>;
   createInvitation(input: CreateInvitationInput): Promise<InvitationInfo>;
-  deleteInvitation(id: number): Promise<string>;
+  deleteInvitation(id: number): Promise<string | null>;
   listLibraries(): Promise<LibraryInfo[]>;
   listServers(): Promise<ServerInfo[]>;
 }

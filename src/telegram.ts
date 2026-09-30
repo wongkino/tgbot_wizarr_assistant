@@ -80,8 +80,8 @@ export function createTelegramClient(token: string, fetchImpl: typeof fetch = fe
 }
 
 function telegramError(method: string, error: unknown): Error {
-  const reason = error instanceof Error ? error.message : "連線失敗";
-  return new Error(`Telegram ${method} 失敗：${reason}`);
+  const reason = error instanceof Error ? error.message : String(error);
+  return new Error(`Telegram ${method} failed: ${reason}`);
 }
 
 export function splitText(text: string): string[] {

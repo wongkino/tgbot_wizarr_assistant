@@ -13,11 +13,14 @@ import type {
 
 export class WizarrError extends Error {
   readonly status: number;
+  /** true 表示 fetch 層級的連線失敗（無 HTTP 回應），message 為原始原因。 */
+  readonly connection: boolean;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, connection = false) {
     super(message);
     this.name = "WizarrError";
     this.status = status;
+    this.connection = connection;
   }
 }
 
@@ -47,8 +50,8 @@ export function createWizarrClient(options: WizarrClientOptions): WizarrApi {
         body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
       });
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "連線失敗";
-      throw new WizarrError(`無法連線 Wizarr：${reason}`, 0);
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new WizarrError(reason, 0, true);
     }
 
     const text = await response.text();
@@ -162,9 +165,9 @@ function parseUser(data: unknown): UserInfo {
   const record = asRecord(data) ?? {};
   return {
     id: numberOf(record.id),
-    username: stringOf(record.username) ?? "未命名",
+    username: stringOf(record.username) ?? "",
     email: stringOf(record.email),
-    server: stringOf(record.server) ?? "未知伺服器",
+    server: stringOf(record.server) ?? "",
     serverType: stringOf(record.server_type) ?? "unknown",
     expires: stringOf(record.expires),
   };
@@ -194,10 +197,10 @@ function parseLibrary(data: unknown): LibraryInfo {
   const record = asRecord(data) ?? {};
   return {
     id: numberOf(record.id),
-    name: stringOf(record.name) ?? "未命名",
+    name: stringOf(record.name) ?? "",
     externalId: stringOf(record.external_id),
     serverId: record.server_id == null ? null : numberOf(record.server_id),
-    serverName: stringOf(record.server_name) ?? "未知伺服器",
+    serverName: stringOf(record.server_name) ?? "",
     enabled: record.enabled !== false,
   };
 }
@@ -206,7 +209,7 @@ function parseServer(data: unknown): ServerInfo {
   const record = asRecord(data) ?? {};
   return {
     id: numberOf(record.id),
-    name: stringOf(record.name) ?? "未命名",
+    name: stringOf(record.name) ?? "",
     serverType: stringOf(record.server_type) ?? "unknown",
     serverUrl: stringOf(record.server_url),
     externalUrl: stringOf(record.external_url),
@@ -220,7 +223,7 @@ function parseServer(data: unknown): ServerInfo {
 function parseExtend(data: unknown): ExtendResult {
   const record = asRecord(data) ?? {};
   return {
-    message: stringOf(record.message) ?? "已延長到期日",
+    message: stringOf(record.message),
     newExpiry: stringOf(record.new_expiry),
   };
 }
@@ -229,14 +232,14 @@ function parseReset(data: unknown, publicBase: string): PasswordResetInfo {
   const record = asRecord(data) ?? {};
   const rawUrl = stringOf(record.url) ?? "";
   return {
-    message: stringOf(record.message) ?? "已建立重設密碼連結",
+    message: stringOf(record.message),
     url: absoluteUrl(publicBase, rawUrl),
     expiresAt: stringOf(record.expires_at),
   };
 }
 
-function messageOf(data: unknown): string {
-  return extractError(data) ?? stringOf(asRecord(data)?.message) ?? "完成";
+function messageOf(data: unknown): string | null {
+  return extractError(data) ?? stringOf(asRecord(data)?.message);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
