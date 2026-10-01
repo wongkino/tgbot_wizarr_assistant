@@ -15,19 +15,18 @@ export const SCREEN_PARENT = {
   invite_library_pick: "invites",
   invite_permissions: "invites",
   delete_invite_pick: "invites",
-  libraries: "libraries",
-  library_list: "libraries",
-  servers: "servers",
-  server_list: "servers",
+  library_list: "main",
+  server_list: "main",
   settings: "main",
-  settings_expiry: "settings",
-  settings_duration: "settings",
-  settings_permissions: "settings",
-  settings_library_server: "settings",
-  settings_library_pick: "settings",
+  settings_quick: "settings",
+  settings_expiry: "settings_quick",
+  settings_duration: "settings_quick",
+  settings_permissions: "settings_quick",
+  settings_library_server: "settings_quick",
+  settings_library_pick: "settings_quick",
   settings_lang: "settings",
   confirm: "main",
-} as const satisfies Record<Screen["type"], "main" | "users" | "invites" | "libraries" | "servers" | "settings">;
+} as const satisfies Record<Screen["type"], "main" | "users" | "invites" | "settings" | "settings_quick">;
 
 const SCREEN_TYPES = new Set<Screen["type"]>(Object.keys(SCREEN_PARENT) as Screen["type"][]);
 const INVITE_FILTERS = new Set(["all", "pending", "used", "expired"]);
@@ -41,9 +40,8 @@ export function isScreen(value: unknown): value is Screen {
     case "main":
     case "users":
     case "invites":
-    case "libraries":
-    case "servers":
     case "settings":
+    case "settings_quick":
     case "settings_expiry":
     case "settings_duration":
     case "settings_lang":
@@ -72,7 +70,13 @@ export function isScreen(value: unknown): value is Screen {
     case "settings_permissions":
       return isPermissionFlags(record.permissions);
     case "settings_library_pick":
-      return Array.isArray(record.serverIds) && Array.isArray(record.selectedIds) && isNumber(record.page);
+      return (
+        Array.isArray(record.serverIds) &&
+        Array.isArray(record.serverNames) &&
+        (record.serverNames as unknown[]).every((name) => typeof name === "string") &&
+        Array.isArray(record.selectedIds) &&
+        isNumber(record.page)
+      );
     case "confirm":
       return isPending(record.pending);
     default:

@@ -32,8 +32,6 @@ export interface Buttons {
   quickInvite: string;
   createInvite: string;
   deleteInvite: string;
-  listLibraries: string;
-  listServers: string;
   confirm: string;
   cancel: string;
   prev: string;
@@ -58,6 +56,10 @@ export interface Buttons {
   days30: string;
   days90: string;
   settings: string;
+  /** 設定根層的快速邀請分類入口。 */
+  quickSettings: string;
+  /** 從分類子選單返回設定根層。 */
+  backSettings: string;
   setExpiry: string;
   setDuration: string;
   setPermissions: string;
@@ -131,12 +133,15 @@ export interface Catalog {
   permissionsHintNext: string;
   permissionsHintConfirm: string;
   quickSettingsTitle: string;
-  quickSettingsBody(settings: QuickInviteSettings): string[];
+  /** servers 用來把勾選的 serverIds 解析成名稱；null 表示未查詢（顯示 #id）。 */
+  quickSettingsBody(settings: QuickInviteSettings, servers: ServerInfo[] | null): string[];
   inviteSummaryTitle: string;
   inviteSummaryBody(draft: InviteDraft): string[];
   durationLabel(duration: string, unlimited: boolean): string;
   allEnabledLibraries: string;
   librariesLine(names: string[]): string;
+  /** 「伺服器：A、B」行，用於預設媒體庫挑選畫面的範圍標頭。 */
+  serversLine(names: string[]): string;
   actionPrompt(action: UserAction): string;
   msg: {
     privateOnly: string;

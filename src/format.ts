@@ -143,8 +143,8 @@ export function formatPermissions(cat: Catalog, permissions: PermissionFlags, hi
   return [`<b>${cat.permissionsTitle}</b>`, ...cat.permissionLines(permissions), "", hint].join("\n");
 }
 
-export function formatQuickSettings(cat: Catalog, settings: QuickInviteSettings): string {
-  return [`<b>${cat.quickSettingsTitle}</b>`, ...cat.quickSettingsBody(settings)].join("\n");
+export function formatQuickSettings(cat: Catalog, settings: QuickInviteSettings, servers: ServerInfo[] | null = null): string {
+  return [`<b>${cat.quickSettingsTitle}</b>`, ...cat.quickSettingsBody(settings, servers)].join("\n");
 }
 
 export function formatInviteSummary(cat: Catalog, draft: InviteDraft): string {

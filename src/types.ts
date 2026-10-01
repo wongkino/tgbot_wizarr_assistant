@@ -180,8 +180,6 @@ export type Screen =
   | { type: "main" }
   | { type: "users" }
   | { type: "invites" }
-  | { type: "libraries" }
-  | { type: "servers" }
   | { type: "user_list"; page: number }
   | { type: "invite_list"; page: number; filter: InviteFilter }
   | { type: "library_list"; page: number }
@@ -196,11 +194,12 @@ export type Screen =
   | { type: "invite_permissions"; draft: InviteDraft }
   | { type: "delete_invite_pick"; page: number }
   | { type: "settings" }
+  | { type: "settings_quick" }
   | { type: "settings_expiry" }
   | { type: "settings_duration" }
   | { type: "settings_permissions"; permissions: PermissionFlags }
   | { type: "settings_library_server"; selectedIds: number[] }
-  | { type: "settings_library_pick"; serverIds: number[]; selectedIds: number[]; page: number }
+  | { type: "settings_library_pick"; serverIds: number[]; serverNames: string[]; selectedIds: number[]; page: number }
   | { type: "settings_lang" }
   | { type: "confirm"; pending: PendingAction };
 

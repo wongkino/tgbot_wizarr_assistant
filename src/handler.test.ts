@@ -606,6 +606,8 @@ describe("回覆鍵盤", () => {
     assert.match(ctx.telegram.last().text, /快速邀請設定/);
     assert.match(ctx.telegram.last().text, /邀請連結：7 天/);
     assert.match(ctx.telegram.last().text, /帳號期限：無限制/);
+    assert.match(ctx.telegram.last().text, /伺服器：全部已驗證的伺服器/);
+    await run(B.quickSettings, ctx);
     await run(B.setExpiry, ctx);
     await run(B.expiry30, ctx);
     assert.match(ctx.telegram.last().text, /已儲存連結有效期/);
@@ -636,6 +638,7 @@ describe("回覆鍵盤", () => {
   it("可在設定裡自訂快速邀請的預設媒體庫", async () => {
     const ctx = quickCtx();
     await run(B.settings, ctx);
+    await run(B.quickSettings, ctx);
     await run(B.setLibraries, ctx);
     assert.doesNotMatch(ctx.telegram.last().text, /✅/);
     await run(libraryButton(cat, 3, false), ctx);
@@ -651,6 +654,7 @@ describe("回覆鍵盤", () => {
   it("預設媒體庫可改為全部已啟用的媒體庫", async () => {
     const ctx = quickCtx();
     await run(B.settings, ctx);
+    await run(B.quickSettings, ctx);
     await run(B.setLibraries, ctx);
     await run(B.allLibraries, ctx);
     assert.match(ctx.telegram.last().text, /已改用全部已啟用的媒體庫/);
@@ -662,9 +666,11 @@ describe("回覆鍵盤", () => {
   it("重設預設會還原快速邀請設定", async () => {
     const ctx = quickCtx();
     await run(B.settings, ctx);
+    await run(B.quickSettings, ctx);
     await run(B.setExpiry, ctx);
     await run(B.expiry30, ctx);
     assert.match(ctx.telegram.last().text, /邀請連結：30 天/);
+    await run(B.backSettings, ctx);
     await run(B.resetSettings, ctx);
     assert.match(ctx.telegram.last().text, /已重設為預設值/);
     assert.match(ctx.telegram.last().text, /邀請連結：7 天/);
@@ -681,6 +687,7 @@ describe("回覆鍵盤", () => {
     assert.equal(created.length, 1);
     assert.match(ctx.telegram.last().text, /沿用這組代碼/);
     await run(B.settings, ctx);
+    await run(B.quickSettings, ctx);
     await run(B.setExpiry, ctx);
     await run(B.expiry30, ctx);
     await run(B.quickInvite, ctx);
@@ -701,6 +708,7 @@ describe("回覆鍵盤", () => {
     // 關閉沿用：每次都新建
     await run(B.settings, ctx);
     assert.match(ctx.telegram.last().text, /沿用代碼：開/);
+    await run(B.quickSettings, ctx);
     await run(B.reuseCode, ctx);
     assert.match(ctx.telegram.last().text, /沿用代碼：關/);
     await run(B.quickInvite, ctx);
@@ -710,6 +718,7 @@ describe("回覆鍵盤", () => {
     assert.doesNotMatch(ctx.telegram.last().text, /沿用這組代碼/);
     // 重新開啟：沿用最新一組（CODE3）
     await run(B.settings, ctx);
+    await run(B.quickSettings, ctx);
     await run(B.reuseCode, ctx);
     assert.match(ctx.telegram.last().text, /沿用代碼：開/);
     await run(B.quickInvite, ctx);
@@ -831,6 +840,7 @@ describe("回覆鍵盤", () => {
     });
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.settings, ctx);
+    await run(B.quickSettings, ctx);
     await run(B.setLibraries, ctx);
     // 只勾選 Emby 二號與它的 Anime
     await run(serverButton(cat, 2), ctx);
@@ -857,6 +867,7 @@ describe("回覆鍵盤", () => {
     });
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.settings, ctx);
+    await run(B.quickSettings, ctx);
     await run(B.setLibraries, ctx);
     await run(serverButton(cat, 2), ctx);
     await run(B.serversDone, ctx);
@@ -910,6 +921,7 @@ describe("回覆鍵盤", () => {
     });
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.settings, ctx);
+    await run(B.quickSettings, ctx);
     await run(B.setLibraries, ctx);
     const text = ctx.telegram.last().text;
     assert.match(text, /選擇要設定預設媒體庫的伺服器/);
@@ -918,6 +930,28 @@ describe("回覆鍵盤", () => {
     await run(serverButton(cat, 1), ctx);
     await run(B.serversDone, ctx);
     assert.match(ctx.telegram.last().text, /選擇媒體庫/);
+    assert.match(ctx.telegram.last().text, /伺服器：Emby 一號/);
+  });
+
+  it("再次進入預設媒體庫會預先勾選已儲存的伺服器", async () => {
+    const wizarr = fakeWizarr({
+      async listServers() {
+        return twoEmbyServers();
+      },
+      async listLibraries() {
+        return quickLibraryFixtures();
+      },
+    });
+    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await saveQuickSettings(ctx.sessions, { ...defaultQuickSettings(), serverIds: [2, 9] });
+    await run(B.settings, ctx);
+    await run(B.quickSettings, ctx);
+    await run(B.setLibraries, ctx);
+    const buttons = ctx.telegram.buttons();
+    // 已儲存的 #2 預先勾選；已移除的 #9 不出現；未儲存的 #1 維持未勾選
+    assert.ok(buttons.includes(serverButton(cat, 2, true)));
+    assert.ok(buttons.includes(serverButton(cat, 1, false)));
+    assert.ok(!buttons.some((button) => button.includes("#9")));
   });
 
   it("設定預設媒體庫可複選多台，媒體庫合併顯示", async () => {
@@ -934,21 +968,60 @@ describe("回覆鍵盤", () => {
     });
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.settings, ctx);
+    await run(B.quickSettings, ctx);
     await run(B.setLibraries, ctx);
     await run(serverButton(cat, 1), ctx);
     await run(serverButton(cat, 2), ctx);
     await run(B.serversDone, ctx);
     const text = ctx.telegram.last().text;
     assert.match(text, /選擇媒體庫/);
+    assert.match(text, /伺服器：Emby 一號、Emby 二號/);
     assert.match(text, /Movies/);
     assert.match(text, /Anime/);
     await run(libraryButton(cat, 3, false), ctx);
     await run(libraryButton(cat, 12, false), ctx);
     await run(B.librariesDone, ctx);
     assert.match(ctx.telegram.last().text, /媒體庫：Movies、Anime/);
+    assert.match(ctx.telegram.last().text, /伺服器：Emby 一號、Emby 二號/);
     await run(B.quickInvite, ctx);
     assert.deepEqual(wizarr.created[0]?.serverIds, [1, 2]);
     assert.deepEqual(wizarr.created[0]?.libraryIds, [3, 12]);
+  });
+
+  it("設定頁會顯示勾選的伺服器，已移除的顯示代號", async () => {
+    const ctx = quickCtx();
+    await saveQuickSettings(ctx.sessions, { ...defaultQuickSettings(), serverIds: [1, 9] });
+    await run(B.settings, ctx);
+    assert.match(ctx.telegram.last().text, /伺服器：Emby、伺服器 9/);
+  });
+
+  it("設定根層是分類選單，快速邀請項目收在子選單", async () => {
+    const ctx = quickCtx();
+    await run(B.settings, ctx);
+    // 根層仍顯示目前設定內容，但按鈕只有分類與一般項目
+    assert.match(ctx.telegram.last().text, /快速邀請設定/);
+    let buttons = ctx.telegram.buttons();
+    assert.ok(buttons.includes(B.quickSettings));
+    assert.ok(buttons.includes(B.setLanguage));
+    assert.ok(buttons.includes(B.resetSettings));
+    assert.ok(!buttons.includes(B.setExpiry));
+    assert.ok(!buttons.includes(B.reuseCode));
+    // 進入快速邀請分類：顯示內容與五個項目
+    await run(B.quickSettings, ctx);
+    assert.match(ctx.telegram.last().text, /快速邀請設定/);
+    assert.match(ctx.telegram.last().text, /邀請連結：7 天/);
+    buttons = ctx.telegram.buttons();
+    assert.ok(buttons.includes(B.setExpiry));
+    assert.ok(buttons.includes(B.setDuration));
+    assert.ok(buttons.includes(B.setPermissions));
+    assert.ok(buttons.includes(B.setLibraries));
+    assert.ok(buttons.includes(B.reuseCode));
+    assert.ok(buttons.includes(B.backSettings));
+    // 返回設定根層
+    await run(B.backSettings, ctx);
+    buttons = ctx.telegram.buttons();
+    assert.ok(buttons.includes(B.quickSettings));
+    assert.ok(!buttons.includes(B.setExpiry));
   });
 
   it("列出媒體庫時按伺服器分組、不再逐條重複伺服器與 externalId", async () => {
@@ -962,7 +1035,7 @@ describe("回覆鍵盤", () => {
       },
     });
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
-    await run(B.listLibraries, ctx);
+    await run(B.libraries, ctx);
     const text = ctx.telegram.last().text;
     assert.equal(text.match(/<b>Emby 一號<\/b>/g)?.length, 1);
     assert.equal(text.match(/<b>Emby 二號<\/b>/g)?.length, 1);

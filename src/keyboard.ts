@@ -90,23 +90,27 @@ export function invitesKeyboard(cat: Catalog): ReplyMarkup {
   );
 }
 
-export function librariesKeyboard(cat: Catalog): ReplyMarkup {
-  return markup([[cat.buttons.listLibraries], [cat.buttons.home]], cat.ph.libraries);
-}
-
-export function serversKeyboard(cat: Catalog): ReplyMarkup {
-  return markup([[cat.buttons.listServers], [cat.buttons.home]], cat.ph.servers);
-}
-
 export function settingsKeyboard(cat: Catalog): ReplyMarkup {
+  const b = cat.buttons;
+  return markup(
+    [
+      [b.quickSettings, b.setLanguage],
+      [b.resetSettings],
+      [b.home],
+    ],
+    cat.ph.settings,
+  );
+}
+
+/** 設定 → 快速邀請分類的子選單。 */
+export function quickSettingsKeyboard(cat: Catalog): ReplyMarkup {
   const b = cat.buttons;
   return markup(
     [
       [b.setExpiry, b.setDuration],
       [b.setPermissions, b.setLibraries],
-      [b.reuseCode, b.setLanguage],
-      [b.resetSettings],
-      [b.home],
+      [b.reuseCode],
+      [b.backSettings, b.home],
     ],
     cat.ph.settings,
   );

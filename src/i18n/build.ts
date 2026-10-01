@@ -30,6 +30,8 @@ export interface CatalogStrings {
     notSpecified: string;
     noEmail: string;
     allEnabledLibraries: string;
+    /** 快速設定裡「未勾選伺服器」的顯示文字。 */
+    allVerifiedServers: string;
   };
   filterTitles: { all: string; pending: string; used: string; expired: string };
   statusLabels: { pending: string; used: string; expired: string };
@@ -97,6 +99,8 @@ export interface CatalogStrings {
     lineDuration: string;
     /** {libraries} */
     lineLibraries: string;
+    /** 快速設定裡的伺服器行：{servers}（預先組好的多台字串） */
+    lineServers: string;
     /** 快速設定裡的沿用代碼行：{value}（代入 on/off） */
     lineReuse: string;
     /** 摘要裡單台伺服器的格式：{name} {id} */
@@ -323,12 +327,21 @@ export function buildCatalog(s: CatalogStrings): Catalog {
     permissionsHintNext: s.titles.permissionsHintNext,
     permissionsHintConfirm: s.titles.permissionsHintConfirm,
     quickSettingsTitle: s.titles.quickSettings,
-    quickSettingsBody: (settings) => {
+    quickSettingsBody: (settings, servers) => {
       const libraries =
         settings.libraries === null ? s.words.allEnabledLibraries : join(settings.libraries.map((item) => esc(item.name)));
+      const serverNames = settings.serverIds?.length
+        ? join(
+            settings.serverIds.map((id) => {
+              const name = servers?.find((server) => server.id === id)?.name;
+              return name ? esc(name) : tpl(s.msg.serverFallbackName, { id });
+            }),
+          )
+        : s.words.allVerifiedServers;
       return [
         tpl(s.tpl.lineExpiry, { expiry: expiryLabel(settings.expiresInDays) }),
         tpl(s.tpl.lineDuration, { duration: esc(durationLabel(settings.duration, settings.unlimited)) }),
+        tpl(s.tpl.lineServers, { servers: serverNames }),
         tpl(s.tpl.lineLibraries, { libraries }),
         tpl(s.tpl.lineReuse, { value: flag(settings.reuseCode) }),
         ...permissionLines(settings),
@@ -359,6 +372,7 @@ export function buildCatalog(s: CatalogStrings): Catalog {
     durationLabel,
     allEnabledLibraries: s.words.allEnabledLibraries,
     librariesLine: (names) => tpl(s.tpl.lineLibraries, { libraries: join(names.map(esc)) }),
+    serversLine: (names) => tpl(s.tpl.lineServers, { servers: join(names.map(esc)) }),
     actionPrompt: (action) => tpl(s.tpl.actionPrompt, { verb: s.actionVerbs[action] }),
     msg: {
       privateOnly: s.msg.privateOnly,
