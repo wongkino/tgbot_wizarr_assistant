@@ -15,8 +15,9 @@ export const SCREEN_PARENT = {
   invite_library_pick: "invites",
   invite_permissions: "invites",
   delete_invite_pick: "invites",
-  library_list: "main",
-  server_list: "main",
+  status: "main",
+  library_list: "status",
+  server_list: "status",
   settings: "main",
   settings_quick: "settings",
   settings_expiry: "settings_quick",
@@ -24,9 +25,10 @@ export const SCREEN_PARENT = {
   settings_permissions: "settings_quick",
   settings_library_server: "settings_quick",
   settings_library_pick: "settings_quick",
+  settings_library_more: "settings_quick",
   settings_lang: "settings",
   confirm: "main",
-} as const satisfies Record<Screen["type"], "main" | "users" | "invites" | "settings" | "settings_quick">;
+} as const satisfies Record<Screen["type"], "main" | "users" | "invites" | "status" | "settings" | "settings_quick">;
 
 const SCREEN_TYPES = new Set<Screen["type"]>(Object.keys(SCREEN_PARENT) as Screen["type"][]);
 const INVITE_FILTERS = new Set(["all", "pending", "used", "expired"]);
@@ -40,6 +42,7 @@ export function isScreen(value: unknown): value is Screen {
     case "main":
     case "users":
     case "invites":
+    case "status":
     case "settings":
     case "settings_quick":
     case "settings_expiry":
@@ -47,8 +50,10 @@ export function isScreen(value: unknown): value is Screen {
     case "settings_lang":
       return true;
     case "invite_server":
-    case "settings_library_server":
       return Array.isArray(record.selectedIds) && (record.selectedIds as unknown[]).every(isNumber);
+    case "settings_library_server":
+    case "settings_library_more":
+      return Array.isArray(record.picked) && (record.picked as unknown[]).every(isPickedLibraries);
     case "user_list":
     case "library_list":
     case "server_list":
@@ -71,11 +76,13 @@ export function isScreen(value: unknown): value is Screen {
       return isPermissionFlags(record.permissions);
     case "settings_library_pick":
       return (
-        Array.isArray(record.serverIds) &&
-        Array.isArray(record.serverNames) &&
-        (record.serverNames as unknown[]).every((name) => typeof name === "string") &&
+        isNumber(record.serverId) &&
+        typeof record.serverName === "string" &&
         Array.isArray(record.selectedIds) &&
-        isNumber(record.page)
+        (record.selectedIds as unknown[]).every(isNumber) &&
+        isNumber(record.page) &&
+        Array.isArray(record.picked) &&
+        (record.picked as unknown[]).every(isPickedLibraries)
       );
     case "confirm":
       return isPending(record.pending);
@@ -183,6 +190,27 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function isNumber(value: unknown): boolean {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+/** 預設媒體庫流程裡一台伺服器已選好的媒體庫。 */
+function isPickedLibraries(value: unknown): boolean {
+  const picked = asRecord(value);
+  return Boolean(
+    picked &&
+      isNumber(picked.serverId) &&
+      typeof picked.serverName === "string" &&
+      Array.isArray(picked.libraries) &&
+      (picked.libraries as unknown[]).every(isLibraryMatcher),
+  );
+}
+
+function isLibraryMatcher(value: unknown): boolean {
+  const matcher = asRecord(value);
+  return Boolean(
+    matcher &&
+      typeof matcher.name === "string" &&
+      (matcher.externalId === null || typeof matcher.externalId === "string"),
+  );
 }
 
 function isDraft(value: unknown): boolean {

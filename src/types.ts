@@ -176,10 +176,18 @@ export type PendingAction =
   | { kind: "delete_invite"; invitationId: number; code: string }
   | { kind: "create_invite"; input: CreateInvitationInput };
 
+/** 預設媒體庫流程中，一台伺服器已選好的媒體庫。 */
+export interface PickedServerLibraries {
+  serverId: number;
+  serverName: string;
+  libraries: QuickLibraryMatcher[];
+}
+
 export type Screen =
   | { type: "main" }
   | { type: "users" }
   | { type: "invites" }
+  | { type: "status" }
   | { type: "user_list"; page: number }
   | { type: "invite_list"; page: number; filter: InviteFilter }
   | { type: "library_list"; page: number }
@@ -198,8 +206,16 @@ export type Screen =
   | { type: "settings_expiry" }
   | { type: "settings_duration" }
   | { type: "settings_permissions"; permissions: PermissionFlags }
-  | { type: "settings_library_server"; selectedIds: number[] }
-  | { type: "settings_library_pick"; serverIds: number[]; serverNames: string[]; selectedIds: number[]; page: number }
+  | { type: "settings_library_server"; picked: PickedServerLibraries[] }
+  | {
+      type: "settings_library_pick";
+      serverId: number;
+      serverName: string;
+      selectedIds: number[];
+      page: number;
+      picked: PickedServerLibraries[];
+    }
+  | { type: "settings_library_more"; picked: PickedServerLibraries[] }
   | { type: "settings_lang" }
   | { type: "confirm"; pending: PendingAction };
 

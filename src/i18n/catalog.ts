@@ -4,6 +4,7 @@ import type {
   InviteFilter,
   LibraryInfo,
   PermissionFlags,
+  PickedServerLibraries,
   QuickInviteSettings,
   ServerInfo,
   StatusInfo,
@@ -12,11 +13,14 @@ import type {
 } from "../types.ts";
 
 export interface Buttons {
+  /** 主選單的狀態分類入口。 */
   status: string;
   users: string;
   invites: string;
-  libraries: string;
-  servers: string;
+  /** 狀態分類裡的三個項目。 */
+  userStatus: string;
+  libraryStatus: string;
+  serverStatus: string;
   help: string;
   home: string;
   listUsers: string;
@@ -48,6 +52,10 @@ export interface Buttons {
   pickLibraries: string;
   librariesDone: string;
   serversDone: string;
+  /** 預設媒體庫流程：選完一台後再加入其他伺服器。 */
+  moreServers: string;
+  /** 預設媒體庫流程：結束並儲存所有已選。 */
+  picksDone: string;
   nextStep: string;
   toggleDownloads: string;
   toggleLive: string;
@@ -80,6 +88,7 @@ export interface Catalog {
     main: string;
     users: string;
     invites: string;
+    status: string;
     libraries: string;
     servers: string;
     settings: string;
@@ -142,6 +151,8 @@ export interface Catalog {
   librariesLine(names: string[]): string;
   /** 「伺服器：A、B」行，用於預設媒體庫挑選畫面的範圍標頭。 */
   serversLine(names: string[]): string;
+  /** 預設媒體庫流程的累計摘要：逐台列出伺服器與已選媒體庫，並詢問是否繼續。 */
+  pickedLibrariesText(picked: PickedServerLibraries[]): string;
   actionPrompt(action: UserAction): string;
   msg: {
     privateOnly: string;
@@ -155,6 +166,7 @@ export interface Catalog {
     cancelled: string;
     usersMenu: string;
     invitesMenu: string;
+    statusMenu: string;
     noUsers: string;
     userNotFound: string;
     userLine(username: string, id: number): string;
@@ -183,9 +195,13 @@ export interface Catalog {
     permissionsSaved: string;
     noServersLibrarySettings: string;
     chooseLibraryServersSettings: string;
+    /** 選到的伺服器沒有已啟用的媒體庫：{name} */
+    noLibrariesOnServerSettings(name: string): string;
     allLibrariesSaved: string;
     pickOneLibrary: string;
     librariesSaved: string;
+    /** 預設媒體庫累計摘要後的追問。 */
+    chooseMoreServers: string;
     /** 沿用代碼開關切換後的提示，代入新狀態。 */
     reuseSaved(on: boolean): string;
     libraryFallbackName(id: number): string;

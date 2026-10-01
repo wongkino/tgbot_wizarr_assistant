@@ -56,6 +56,8 @@ export interface CatalogStrings {
     permissionsHintConfirm: string;
     quickSettings: string;
     inviteSummary: string;
+    /** 預設媒體庫流程的累計摘要標題。 */
+    pickedLibraries: string;
   };
   tpl: {
     /** {title} {page} {pages} {total} {unit} */
@@ -107,13 +109,15 @@ export interface CatalogStrings {
     serverEntry: string;
     /** 邀請摘要第一行：{servers}（預先組好的多台字串） */
     summaryServer: string;
+    /** 預設媒體庫累計摘要的逐台行：{server} {libraries} */
+    pickedServerLine: string;
     /** {verb} */
     actionPrompt: string;
     /** {users} {invites} {pending} {expired} */
     statusInfo: string;
     /** {userId} */
     unauthorized: string;
-    /** {quickInvite} {status} {users} {invites} {libraries} {servers} {settings} */
+    /** {quickInvite} {status} {users} {invites} {settings} */
     welcome: string;
     /** {settings} */
     help: string;
@@ -132,6 +136,7 @@ export interface CatalogStrings {
     cancelled: string;
     usersMenu: string;
     invitesMenu: string;
+    statusMenu: string;
     noUsers: string;
     userNotFound: string;
     /** {username} {id} */
@@ -168,9 +173,13 @@ export interface CatalogStrings {
     permissionsSaved: string;
     noServersLibrarySettings: string;
     chooseLibraryServersSettings: string;
+    /** 選到的伺服器沒有已啟用的媒體庫：{name} */
+    noLibrariesOnServerSettings: string;
     allLibrariesSaved: string;
     pickOneLibrary: string;
     librariesSaved: string;
+    /** 預設媒體庫累計摘要後的追問。 */
+    chooseMoreServers: string;
     /** 沿用代碼開關的儲存提示：{value}（代入 on/off） */
     reuseSaved: string;
     /** {id} */
@@ -256,8 +265,6 @@ export function buildCatalog(s: CatalogStrings): Catalog {
         status: s.buttons.status,
         users: s.buttons.users,
         invites: s.buttons.invites,
-        libraries: s.buttons.libraries,
-        servers: s.buttons.servers,
         settings: s.buttons.settings,
       }),
     help: () => tpl(s.tpl.help, { settings: s.buttons.settings }),
@@ -373,6 +380,18 @@ export function buildCatalog(s: CatalogStrings): Catalog {
     allEnabledLibraries: s.words.allEnabledLibraries,
     librariesLine: (names) => tpl(s.tpl.lineLibraries, { libraries: join(names.map(esc)) }),
     serversLine: (names) => tpl(s.tpl.lineServers, { servers: join(names.map(esc)) }),
+    pickedLibrariesText: (picked) =>
+      [
+        `<b>${s.titles.pickedLibraries}</b>`,
+        ...picked.map((item) =>
+          tpl(s.tpl.pickedServerLine, {
+            server: esc(item.serverName),
+            libraries: join(item.libraries.map((library) => esc(library.name))),
+          }),
+        ),
+        "",
+        s.msg.chooseMoreServers,
+      ].join("\n"),
     actionPrompt: (action) => tpl(s.tpl.actionPrompt, { verb: s.actionVerbs[action] }),
     msg: {
       privateOnly: s.msg.privateOnly,
@@ -385,6 +404,7 @@ export function buildCatalog(s: CatalogStrings): Catalog {
       cancelled: s.msg.cancelled,
       usersMenu: s.msg.usersMenu,
       invitesMenu: s.msg.invitesMenu,
+      statusMenu: s.msg.statusMenu,
       noUsers: s.msg.noUsers,
       userNotFound: s.msg.userNotFound,
       userLine: (username, id) => tpl(s.msg.userLine, { username: esc(username), id }),
@@ -414,9 +434,11 @@ export function buildCatalog(s: CatalogStrings): Catalog {
       permissionsSaved: s.msg.permissionsSaved,
       noServersLibrarySettings: s.msg.noServersLibrarySettings,
       chooseLibraryServersSettings: s.msg.chooseLibraryServersSettings,
+      noLibrariesOnServerSettings: (name) => tpl(s.msg.noLibrariesOnServerSettings, { name: esc(name) }),
       allLibrariesSaved: s.msg.allLibrariesSaved,
       pickOneLibrary: s.msg.pickOneLibrary,
       librariesSaved: s.msg.librariesSaved,
+      chooseMoreServers: s.msg.chooseMoreServers,
       reuseSaved: (on) => tpl(s.msg.reuseSaved, { value: flag(on) }),
       libraryFallbackName: (id) => tpl(s.msg.libraryFallbackName, { id }),
       userFallbackName: (id) => tpl(s.msg.userFallbackName, { id }),

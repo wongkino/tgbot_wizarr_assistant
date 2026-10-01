@@ -33,9 +33,12 @@ describe("工作階段", () => {
     assert.equal(isScreen({ type: "settings_quick" }), true);
     assert.equal(isScreen({ type: "settings_expiry" }), true);
     assert.equal(isScreen({ type: "settings_duration" }), true);
-    assert.equal(isScreen({ type: "settings_library_server", selectedIds: [] }), true);
-    assert.equal(isScreen({ type: "settings_library_server", selectedIds: [1, 2] }), true);
+    assert.equal(isScreen({ type: "settings_library_server", picked: [] }), true);
+    assert.equal(isScreen({ type: "settings_library_server", picked: [pickedSample()] }), true);
+    assert.equal(isScreen({ type: "settings_library_server", picked: [{ serverId: 1 }] }), false);
     assert.equal(isScreen({ type: "settings_library_server" }), false);
+    assert.equal(isScreen({ type: "settings_library_more", picked: [pickedSample()] }), true);
+    assert.equal(isScreen({ type: "settings_library_more" }), false);
     assert.equal(isScreen({ type: "settings_lang" }), true);
     assert.equal(
       isScreen({
@@ -47,19 +50,46 @@ describe("工作階段", () => {
     assert.equal(isScreen({ type: "settings_permissions", permissions: { allowDownloads: "yes" } }), false);
     assert.equal(isScreen({ type: "settings_permissions" }), false);
     assert.equal(
-      isScreen({ type: "settings_library_pick", serverIds: [1], serverNames: ["Emby"], selectedIds: [3, 12], page: 0 }),
+      isScreen({
+        type: "settings_library_pick",
+        serverId: 1,
+        serverName: "Emby",
+        selectedIds: [3, 12],
+        page: 0,
+        picked: [],
+      }),
       true,
     );
-    assert.equal(isScreen({ type: "settings_library_pick", serverIds: [1], selectedIds: [3, 12], page: 0 }), false);
     assert.equal(
-      isScreen({ type: "settings_library_pick", serverIds: [1], serverNames: ["Emby"], selectedIds: "all", page: 0 }),
+      isScreen({ type: "settings_library_pick", serverId: 1, selectedIds: [3, 12], page: 0, picked: [] }),
       false,
     );
     assert.equal(
-      isScreen({ type: "settings_library_pick", serverIds: [1], serverNames: ["Emby"], selectedIds: [3], page: "0" }),
+      isScreen({
+        type: "settings_library_pick",
+        serverId: 1,
+        serverName: "Emby",
+        selectedIds: "all",
+        page: 0,
+        picked: [],
+      }),
       false,
     );
-    assert.equal(isScreen({ type: "settings_library_pick", serverId: 1, serverNames: [], selectedIds: [3], page: 0 }), false);
+    assert.equal(
+      isScreen({
+        type: "settings_library_pick",
+        serverId: 1,
+        serverName: "Emby",
+        selectedIds: [3],
+        page: "0",
+        picked: [],
+      }),
+      false,
+    );
+    assert.equal(
+      isScreen({ type: "settings_library_pick", serverId: 1, serverName: "Emby", selectedIds: [3], page: 0 }),
+      false,
+    );
   });
 
   it("SCREEN_PARENT 涵蓋所有畫面類型", () => {
@@ -68,6 +98,7 @@ describe("工作階段", () => {
       main: { type: "main" },
       users: { type: "users" },
       invites: { type: "invites" },
+      status: { type: "status" },
       settings: { type: "settings" },
       settings_quick: { type: "settings_quick" },
       user_list: { type: "user_list", page: 0 },
@@ -89,8 +120,16 @@ describe("工作階段", () => {
         type: "settings_permissions",
         permissions: { allowDownloads: false, allowLiveTv: false, allowMobileUploads: false },
       },
-      settings_library_server: { type: "settings_library_server", selectedIds: [] },
-      settings_library_pick: { type: "settings_library_pick", serverIds: [1], serverNames: ["Emby"], selectedIds: [], page: 0 },
+      settings_library_server: { type: "settings_library_server", picked: [] },
+      settings_library_pick: {
+        type: "settings_library_pick",
+        serverId: 1,
+        serverName: "Emby",
+        selectedIds: [],
+        page: 0,
+        picked: [],
+      },
+      settings_library_more: { type: "settings_library_more", picked: [pickedSample()] },
       settings_lang: { type: "settings_lang" },
       confirm: { type: "confirm", pending: { kind: "delete_invite", invitationId: 1, code: "ABCD" } },
     };
@@ -101,6 +140,10 @@ describe("工作階段", () => {
     assert.deepEqual(Object.keys(samples).sort(), Object.keys(SCREEN_PARENT).sort());
   });
 });
+
+function pickedSample() {
+  return { serverId: 1, serverName: "Emby", libraries: [{ name: "Movies", externalId: "mov" }] };
+}
 
 function draftSample() {
   return {

@@ -55,12 +55,17 @@ export function mainKeyboard(cat: Catalog): ReplyMarkup {
     [
       [b.quickInvite],
       [b.status, b.users],
-      [b.invites, b.libraries],
-      [b.servers, b.settings],
+      [b.invites, b.settings],
       [b.help],
     ],
     cat.ph.main,
   );
+}
+
+/** 狀態分類的子選單：使用者統計、伺服器與媒體庫列表。 */
+export function statusKeyboard(cat: Catalog): ReplyMarkup {
+  const b = cat.buttons;
+  return markup([[b.userStatus], [b.serverStatus], [b.libraryStatus], [b.home]], cat.ph.status);
 }
 
 export function usersKeyboard(cat: Catalog): ReplyMarkup {

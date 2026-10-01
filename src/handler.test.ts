@@ -362,6 +362,8 @@ describe("語言", () => {
     const en = catalogFor("en").buttons;
     assert.ok(ctx.telegram.buttons().includes(en.status));
     await runRaw(en.status, ctx);
+    assert.ok(ctx.telegram.buttons().includes(en.userStatus));
+    await runRaw(en.userStatus, ctx);
     assert.match(ctx.telegram.last().text, /Users: 2/);
   });
 
@@ -408,11 +410,19 @@ describe("回覆鍵盤", () => {
     await run("/start", ctx);
     assert.ok(ctx.telegram.buttons().includes(B.status));
     assert.ok(ctx.telegram.buttons().includes(B.invites));
+    // 狀態子項目收在狀態目錄裡，不在主選單
+    assert.ok(!ctx.telegram.buttons().includes(B.userStatus));
+    assert.ok(!ctx.telegram.buttons().includes(B.libraryStatus));
   });
 
-  it("狀態會顯示 Wizarr 統計", async () => {
+  it("狀態目錄歸類使用者、伺服器與媒體庫狀態", async () => {
     const ctx = { wizarr: fakeWizarr(), telegram: new Recorder(), sessions: new MemorySessionStore() };
     await run(B.status, ctx);
+    const buttons = ctx.telegram.buttons();
+    assert.ok(buttons.includes(B.userStatus));
+    assert.ok(buttons.includes(B.serverStatus));
+    assert.ok(buttons.includes(B.libraryStatus));
+    await run(B.userStatus, ctx);
     assert.match(ctx.telegram.last().text, /使用者：2/);
     assert.match(ctx.telegram.last().text, /待使用：1/);
   });
@@ -842,18 +852,21 @@ describe("回覆鍵盤", () => {
     await run(B.settings, ctx);
     await run(B.quickSettings, ctx);
     await run(B.setLibraries, ctx);
-    // 只勾選 Emby 二號與它的 Anime
+    // 只挑 Emby 二號與它的 Anime
     await run(serverButton(cat, 2), ctx);
-    await run(B.serversDone, ctx);
     await run(libraryButton(cat, 12, false), ctx);
     await run(B.librariesDone, ctx);
+    // 還有另一台伺服器，會列出摘要並問要不要再加；按完成儲存
+    assert.match(ctx.telegram.last().text, /Emby 二號：Anime/);
+    await run(B.picksDone, ctx);
+    assert.match(ctx.telegram.last().text, /已儲存預設媒體庫/);
     await run(B.quickInvite, ctx);
     assert.match(ctx.telegram.last().text, /邀請已建立/);
     assert.deepEqual(wizarr.created[0]?.serverIds, [2]);
     assert.deepEqual(wizarr.created[0]?.libraryIds, [12]);
   });
 
-  it("預設媒體庫選全部時仍只涵蓋勾選的伺服器", async () => {
+  it("預設媒體庫選全部時涵蓋所有已驗證伺服器", async () => {
     const wizarr = fakeWizarr({
       async listServers() {
         return twoEmbyServers();
@@ -869,12 +882,10 @@ describe("回覆鍵盤", () => {
     await run(B.settings, ctx);
     await run(B.quickSettings, ctx);
     await run(B.setLibraries, ctx);
-    await run(serverButton(cat, 2), ctx);
-    await run(B.serversDone, ctx);
     await run(B.allLibraries, ctx);
     assert.match(ctx.telegram.last().text, /已改用全部已啟用的媒體庫/);
     await run(B.quickInvite, ctx);
-    assert.deepEqual(wizarr.created[0]?.serverIds, [2]);
+    assert.deepEqual(wizarr.created[0]?.serverIds, [1, 2]);
     assert.deepEqual(wizarr.created[0]?.libraryIds, []);
   });
 
@@ -927,34 +938,13 @@ describe("回覆鍵盤", () => {
     assert.match(text, /選擇要設定預設媒體庫的伺服器/);
     assert.match(text, /#1<\/b> Emby 一號/);
     assert.match(text, /#2<\/b> Emby 二號/);
+    // 單選一台就直接進入它的媒體庫挑選
     await run(serverButton(cat, 1), ctx);
-    await run(B.serversDone, ctx);
     assert.match(ctx.telegram.last().text, /選擇媒體庫/);
     assert.match(ctx.telegram.last().text, /伺服器：Emby 一號/);
   });
 
-  it("再次進入預設媒體庫會預先勾選已儲存的伺服器", async () => {
-    const wizarr = fakeWizarr({
-      async listServers() {
-        return twoEmbyServers();
-      },
-      async listLibraries() {
-        return quickLibraryFixtures();
-      },
-    });
-    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
-    await saveQuickSettings(ctx.sessions, { ...defaultQuickSettings(), serverIds: [2, 9] });
-    await run(B.settings, ctx);
-    await run(B.quickSettings, ctx);
-    await run(B.setLibraries, ctx);
-    const buttons = ctx.telegram.buttons();
-    // 已儲存的 #2 預先勾選；已移除的 #9 不出現；未儲存的 #1 維持未勾選
-    assert.ok(buttons.includes(serverButton(cat, 2, true)));
-    assert.ok(buttons.includes(serverButton(cat, 1, false)));
-    assert.ok(!buttons.some((button) => button.includes("#9")));
-  });
-
-  it("設定預設媒體庫可複選多台，媒體庫合併顯示", async () => {
+  it("預設媒體庫逐台選擇：選完一台可再加入其他伺服器", async () => {
     const wizarr = fakeWizarr({
       async listServers() {
         return twoEmbyServers();
@@ -970,17 +960,27 @@ describe("回覆鍵盤", () => {
     await run(B.settings, ctx);
     await run(B.quickSettings, ctx);
     await run(B.setLibraries, ctx);
+    // 第一台：Emby 一號的 Movies
     await run(serverButton(cat, 1), ctx);
-    await run(serverButton(cat, 2), ctx);
-    await run(B.serversDone, ctx);
-    const text = ctx.telegram.last().text;
-    assert.match(text, /選擇媒體庫/);
-    assert.match(text, /伺服器：Emby 一號、Emby 二號/);
-    assert.match(text, /Movies/);
-    assert.match(text, /Anime/);
     await run(libraryButton(cat, 3, false), ctx);
+    await run(B.librariesDone, ctx);
+    // 摘要列出已選，並可再加入其他伺服器
+    assert.match(ctx.telegram.last().text, /已選擇的預設媒體庫/);
+    assert.match(ctx.telegram.last().text, /Emby 一號：Movies/);
+    await run(B.moreServers, ctx);
+    // 已選的 #1 不再列出，只剩 #2
+    const buttons = ctx.telegram.buttons();
+    assert.ok(!buttons.some((button) => button.includes("#1")));
+    assert.ok(buttons.includes(serverButton(cat, 2)));
+    await run(serverButton(cat, 2), ctx);
+    // 只列出 Emby 二號的媒體庫
+    assert.match(ctx.telegram.last().text, /伺服器：Emby 二號/);
+    assert.match(ctx.telegram.last().text, /Anime/);
+    assert.doesNotMatch(ctx.telegram.last().text, /Movies/);
     await run(libraryButton(cat, 12, false), ctx);
     await run(B.librariesDone, ctx);
+    // 沒有其他伺服器可加，直接儲存
+    assert.match(ctx.telegram.last().text, /已儲存預設媒體庫/);
     assert.match(ctx.telegram.last().text, /媒體庫：Movies、Anime/);
     assert.match(ctx.telegram.last().text, /伺服器：Emby 一號、Emby 二號/);
     await run(B.quickInvite, ctx);
@@ -1035,7 +1035,7 @@ describe("回覆鍵盤", () => {
       },
     });
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
-    await run(B.libraries, ctx);
+    await run(B.libraryStatus, ctx);
     const text = ctx.telegram.last().text;
     assert.equal(text.match(/<b>Emby 一號<\/b>/g)?.length, 1);
     assert.equal(text.match(/<b>Emby 二號<\/b>/g)?.length, 1);
@@ -1089,7 +1089,7 @@ describe("回覆鍵盤", () => {
       },
     });
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
-    await run(B.status, ctx);
+    await run(B.userStatus, ctx);
     assert.match(ctx.telegram.last().text, /Unauthorized/);
   });
 
@@ -1116,7 +1116,7 @@ describe("回覆鍵盤", () => {
       },
     });
     const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
-    await run(B.status, ctx);
+    await run(B.userStatus, ctx);
     assert.match(ctx.telegram.last().text, /無法連線 Wizarr：fetch failed/);
   });
 
