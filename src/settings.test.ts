@@ -60,6 +60,7 @@ describe("快速邀請設定", () => {
     assert.equal(sameQuickSettings(withServers, { ...a, serverIds: null }), false);
     // reuseCode 不影響邀請內容，開關不同仍視為同一組設定
     assert.equal(sameQuickSettings(a, { ...a, reuseCode: !a.reuseCode }), true);
+    assert.equal(sameQuickSettings(a, { ...a, showQr: !a.showQr }), true);
     assert.equal(
       sameQuickSettings(a, { ...a, libraries: [...a.libraries, { name: "Music", externalId: null }] }),
       false,
@@ -75,15 +76,17 @@ describe("快速邀請設定", () => {
     assert.equal(parseQuickSettings({ ...settings, serverIds: [0] }), null);
     assert.equal(parseQuickSettings({ ...settings, serverIds: "all" }), null);
     assert.equal(parseQuickSettings({ ...settings, reuseCode: "yes" }), null);
+    assert.equal(parseQuickSettings({ ...settings, showQr: "yes" }), null);
     const parsed = parseQuickSettings(JSON.parse(JSON.stringify(settings)));
     assert.deepEqual(parsed, settings);
   });
 
-  it("舊版設定沒有 serverIds 與 reuseCode 欄位也能解析", () => {
-    const settings = { ...defaultQuickSettings(), serverIds: [1, 2], reuseCode: false };
+  it("舊版設定沒有 serverIds、reuseCode 與 showQr 欄位也能解析", () => {
+    const settings = { ...defaultQuickSettings(), serverIds: [1, 2], reuseCode: false, showQr: false };
     const legacy = JSON.parse(JSON.stringify(settings)) as Record<string, unknown>;
     delete legacy.serverIds;
     delete legacy.reuseCode;
-    assert.deepEqual(parseQuickSettings(legacy), { ...settings, serverIds: null, reuseCode: true });
+    delete legacy.showQr;
+    assert.deepEqual(parseQuickSettings(legacy), { ...settings, serverIds: null, reuseCode: true, showQr: true });
   });
 });

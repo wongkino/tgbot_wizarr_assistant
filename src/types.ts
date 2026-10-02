@@ -86,6 +86,8 @@ export interface QuickInviteSettings extends PermissionFlags {
   libraries: QuickLibraryMatcher[] | null;
   /** 設定不變時沿用未過期的快速邀請代碼；false 則每次都新建。 */
   reuseCode: boolean;
+  /** 列出或建立邀請時是否送出邀請網址的 QR code。 */
+  showQr: boolean;
 }
 
 export interface PasswordResetInfo {

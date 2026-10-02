@@ -73,6 +73,7 @@ export interface Buttons {
   setPermissions: string;
   setLibraries: string;
   reuseCode: string;
+  showQr: string;
   setLanguage: string;
   resetSettings: string;
 }
@@ -204,6 +205,8 @@ export interface Catalog {
     chooseMoreServers: string;
     /** 沿用代碼開關切換後的提示，代入新狀態。 */
     reuseSaved(on: boolean): string;
+    /** QR code 開關切換後的提示，代入新狀態。 */
+    qrSaved(on: boolean): string;
     libraryFallbackName(id: number): string;
     /** API 缺欄位時的使用者顯示名。 */
     userFallbackName(id: number): string;

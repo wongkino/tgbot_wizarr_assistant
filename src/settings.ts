@@ -15,6 +15,7 @@ export function defaultQuickSettings(): QuickInviteSettings {
     serverIds: null,
     libraries: null,
     reuseCode: true,
+    showQr: true,
   };
 }
 
@@ -46,9 +47,11 @@ export function parseQuickSettings(value: unknown): QuickInviteSettings | null {
   if (serverIds === undefined) return null;
   const libraries = parseMatchers(record.libraries);
   if (libraries === undefined) return null;
-  // reuseCode 是後來才加的欄位：缺欄位視為預設 true（向後相容舊資料）。
+  // reuseCode / showQr 是後來才加的欄位：缺欄位視為預設 true（向後相容舊資料）。
   const reuseCode = record.reuseCode === undefined ? true : record.reuseCode;
   if (typeof reuseCode !== "boolean") return null;
+  const showQr = record.showQr === undefined ? true : record.showQr;
+  if (typeof showQr !== "boolean") return null;
   return {
     expiresInDays: expiresInDays as QuickInviteSettings["expiresInDays"],
     duration: record.duration,
@@ -59,6 +62,7 @@ export function parseQuickSettings(value: unknown): QuickInviteSettings | null {
     serverIds,
     libraries,
     reuseCode,
+    showQr,
   };
 }
 
@@ -88,7 +92,7 @@ function parseMatchers(value: unknown): QuickLibraryMatcher[] | null | undefined
   return matchers;
 }
 
-/** 比較會影響邀請內容的欄位；reuseCode 只決定要不要沿用，不比較（開關來回不應多建邀請）。 */
+/** 比較會影響邀請內容的欄位；reuseCode / showQr 只影響行為或顯示，不比較（開關來回不應多建邀請）。 */
 export function sameQuickSettings(a: QuickInviteSettings, b: QuickInviteSettings): boolean {
   return (
     a.expiresInDays === b.expiresInDays &&

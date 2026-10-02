@@ -1000,9 +1000,11 @@ describe("回覆鍵盤", () => {
     await run(B.settings, ctx);
     // 根層仍顯示目前設定內容，但按鈕只有分類與一般項目
     assert.match(ctx.telegram.last().text, /快速邀請設定/);
+    assert.match(ctx.telegram.last().text, /QR code：開/);
     let buttons = ctx.telegram.buttons();
     assert.ok(buttons.includes(B.quickSettings));
     assert.ok(buttons.includes(B.setLanguage));
+    assert.ok(buttons.includes(B.showQr));
     assert.ok(buttons.includes(B.resetSettings));
     assert.ok(!buttons.includes(B.setExpiry));
     assert.ok(!buttons.includes(B.reuseCode));
@@ -1017,11 +1019,32 @@ describe("回覆鍵盤", () => {
     assert.ok(buttons.includes(B.setLibraries));
     assert.ok(buttons.includes(B.reuseCode));
     assert.ok(buttons.includes(B.backSettings));
+    assert.ok(!buttons.includes(B.showQr));
     // 返回設定根層
     await run(B.backSettings, ctx);
     buttons = ctx.telegram.buttons();
     assert.ok(buttons.includes(B.quickSettings));
+    assert.ok(buttons.includes(B.showQr));
     assert.ok(!buttons.includes(B.setExpiry));
+  });
+
+  it("可關閉 QR code，關閉後列出與建立邀請都不再送出", async () => {
+    const ctx = { wizarr: fakeWizarr(), telegram: new Recorder(), sessions: new MemorySessionStore() };
+    await run(B.settings, ctx);
+    assert.match(ctx.telegram.last().text, /QR code：開/);
+    await run(B.showQr, ctx);
+    assert.match(ctx.telegram.last().text, /QR code：關/);
+    await run(B.listInvites, ctx);
+    assert.match(ctx.telegram.last().text, /ABCD/);
+    assert.equal(ctx.telegram.photos.length, 0);
+    await run(B.quickInvite, ctx);
+    assert.equal(ctx.telegram.photos.length, 0);
+    // 重新開啟後會再送出
+    await run(B.settings, ctx);
+    await run(B.showQr, ctx);
+    assert.match(ctx.telegram.last().text, /QR code：開/);
+    await run(B.listInvites, ctx);
+    assert.equal(ctx.telegram.photos.length, 1);
   });
 
   it("列出媒體庫時按伺服器分組、不再逐條重複伺服器與 externalId", async () => {

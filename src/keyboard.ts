@@ -100,6 +100,7 @@ export function settingsKeyboard(cat: Catalog): ReplyMarkup {
   return markup(
     [
       [b.quickSettings, b.setLanguage],
+      [b.showQr],
       [b.resetSettings],
       [b.home],
     ],

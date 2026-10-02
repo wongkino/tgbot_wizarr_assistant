@@ -637,6 +637,12 @@ async function handleSettingsMenu(text: string, ctx: Req, chatId: number): Promi
     await send(ctx, chatId, ctx.cat.msg.chooseLanguage, languageKeyboard());
     return { type: "settings_lang" };
   }
+  if (text === B.showQr) {
+    const { showQr } = await loadQuickSettings(ctx.sessions);
+    const next = !showQr;
+    await updateQuickSettings(ctx, { showQr: next });
+    return showSettings(ctx, chatId, ctx.cat.msg.qrSaved(next));
+  }
   if (text === B.resetSettings) {
     await saveQuickSettings(ctx.sessions, defaultQuickSettings());
     return showSettings(ctx, chatId, ctx.cat.msg.settingsResetDone);
@@ -1173,6 +1179,7 @@ async function sendInviteQr(
   chatId: number,
   invitation: { code: string; url: string },
 ): Promise<void> {
+  if (!(await loadQuickSettings(ctx.sessions)).showQr) return;
   if (!/^https?:\/\//i.test(invitation.url)) return;
   try {
     await ctx.telegram.sendPhoto(chatId, await qrPng(invitation.url), inviteCaption(ctx.cat, invitation));

@@ -105,6 +105,8 @@ export interface CatalogStrings {
     lineServers: string;
     /** 快速設定裡的沿用代碼行：{value}（代入 on/off） */
     lineReuse: string;
+    /** 設定裡的 QR code 行：{value}（代入 on/off） */
+    lineShowQr: string;
     /** 摘要裡單台伺服器的格式：{name} {id} */
     serverEntry: string;
     /** 邀請摘要第一行：{servers}（預先組好的多台字串） */
@@ -182,6 +184,8 @@ export interface CatalogStrings {
     chooseMoreServers: string;
     /** 沿用代碼開關的儲存提示：{value}（代入 on/off） */
     reuseSaved: string;
+    /** QR code 開關的儲存提示：{value}（代入 on/off） */
+    qrSaved: string;
     /** {id} */
     libraryFallbackName: string;
     /** API 缺欄位時的使用者顯示名：{id} */
@@ -351,6 +355,7 @@ export function buildCatalog(s: CatalogStrings): Catalog {
         tpl(s.tpl.lineServers, { servers: serverNames }),
         tpl(s.tpl.lineLibraries, { libraries }),
         tpl(s.tpl.lineReuse, { value: flag(settings.reuseCode) }),
+        tpl(s.tpl.lineShowQr, { value: flag(settings.showQr) }),
         ...permissionLines(settings),
       ];
     },
@@ -440,6 +445,7 @@ export function buildCatalog(s: CatalogStrings): Catalog {
       librariesSaved: s.msg.librariesSaved,
       chooseMoreServers: s.msg.chooseMoreServers,
       reuseSaved: (on) => tpl(s.msg.reuseSaved, { value: flag(on) }),
+      qrSaved: (on) => tpl(s.msg.qrSaved, { value: flag(on) }),
       libraryFallbackName: (id) => tpl(s.msg.libraryFallbackName, { id }),
       userFallbackName: (id) => tpl(s.msg.userFallbackName, { id }),
       serverFallbackName: (id) => tpl(s.msg.serverFallbackName, { id }),
