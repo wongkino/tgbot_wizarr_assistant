@@ -24,6 +24,12 @@ describe("splitWizarrUrl", () => {
 
   it("拒絕不完整網址", () => {
     assert.throws(() => splitWizarrUrl("wizarr.local"), ConfigError);
+    assert.throws(() => splitWizarrUrl("ftp://host"), /必須是 http 或 https/);
+  });
+
+  it("去掉引號與變數名稱後仍能解析", () => {
+    assert.equal(splitWizarrUrl('"https://host/api/"').publicBase, "https://host");
+    assert.equal(splitWizarrUrl("WIZARR_URL=http://host:5690").apiBase, "http://host:5690/api");
   });
 });
 
