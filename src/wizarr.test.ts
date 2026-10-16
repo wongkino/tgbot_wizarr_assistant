@@ -178,6 +178,31 @@ describe("createWizarrClient", () => {
     assert.equal((await client.extendUser(1, 7)).message, null);
     assert.equal((await client.resetPassword(1)).message, null);
   });
+
+  it("列出使用者不依賴 URLSearchParams", async () => {
+    const original = globalThis.URLSearchParams;
+    // @ts-expect-error 模擬沒有這個全域物件的執行環境
+    globalThis.URLSearchParams = undefined;
+    try {
+      let url = "";
+      const client = createWizarrClient({
+        apiBase: "https://wizarr.example/api",
+        apiKey: "k",
+        publicBase: "https://wizarr.example",
+        fetchImpl: async (input) => {
+          url = String(input);
+          return new Response(JSON.stringify({ users: [{ id: 1, username: "乙" }, { id: 2, username: "甲" }] }), {
+            status: 200,
+          });
+        },
+      });
+      const users = await client.listUsers({ username: "a b" });
+      assert.equal(url, "https://wizarr.example/api/users?username=a%20b");
+      assert.deepEqual(users.map((user) => user.username).sort(), ["乙", "甲"].sort());
+    } finally {
+      globalThis.URLSearchParams = original;
+    }
+  });
 });
 
 describe("extractError", () => {

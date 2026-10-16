@@ -138,7 +138,7 @@ export async function handleUpdate(update: Update, ctx: AppContext): Promise<voi
         ? error.connection
           ? cat.msg.wizarrUnreachable(esc(error.message))
           : cat.msg.wizarrError(esc(error.message))
-        : cat.msg.genericError;
+        : `${cat.msg.genericError}\n${esc(error instanceof Error ? error.message : String(error))}`;
     // 出錯時回到上層畫面，讓 session 與送出錯誤訊息時顯示的鍵盤一致。
     const parent = parentOf(screen);
     try {

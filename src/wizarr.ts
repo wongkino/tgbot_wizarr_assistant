@@ -54,9 +54,16 @@ export function createWizarrClient(options: WizarrClientOptions): WizarrApi {
       throw new WizarrError(reason, 0, true);
     }
 
-    const text = await response.text();
+    let text: string;
+    try {
+      text = await readBody(response);
+    } catch (error) {
+      if (error instanceof WizarrError) throw error;
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new WizarrError(reason, response.status || 0, true);
+    }
     const data = text ? parseJson(text) : null;
-    if (!response.ok) {
+    if (!isOk(response)) {
       throw new WizarrError(extractError(data) ?? `HTTP ${response.status}`, response.status);
     }
     return data;
@@ -72,11 +79,9 @@ export function createWizarrClient(options: WizarrClientOptions): WizarrApi {
       return parseStatus(await request("/status"));
     },
     async listUsers(query) {
-      const search = new URLSearchParams();
-      if (query?.username) search.set("username", query.username);
-      const suffix = search.size ? `?${search.toString()}` : "";
+      const suffix = query?.username ? `?username=${encodeURIComponent(query.username)}` : "";
       const users = asArray(asRecord(await request(`/users${suffix}`))?.users).map(parseUser);
-      return users.sort((a, b) => a.username.localeCompare(b.username, "zh-Hant"));
+      return users.sort((a, b) => compareText(a.username, b.username));
     },
     async deleteUser(id) {
       return messageRequest(`/users/${id}`, "DELETE");
@@ -113,9 +118,7 @@ export function createWizarrClient(options: WizarrClientOptions): WizarrApi {
     },
     async listLibraries() {
       const libraries = asArray(asRecord(await request("/libraries"))?.libraries).map(parseLibrary);
-      return libraries.sort((a, b) =>
-        `${a.serverName}:${a.name}`.localeCompare(`${b.serverName}:${b.name}`, "zh-Hant"),
-      );
+      return libraries.sort((a, b) => compareText(`${a.serverName}:${a.name}`, `${b.serverName}:${b.name}`));
     },
     async listServers() {
       const servers = asArray(asRecord(await request("/servers"))?.servers).map(parseServer);
@@ -245,6 +248,33 @@ function parseReset(data: unknown, publicBase: string): PasswordResetInfo {
 
 function messageOf(data: unknown): string | null {
   return extractError(data) ?? stringOf(asRecord(data)?.message);
+}
+
+async function readBody(response: {
+  text?: () => Promise<string>;
+  json?: () => Promise<unknown>;
+  status?: number;
+}): Promise<string> {
+  if (typeof response.text === "function") return response.text();
+  if (typeof response.json === "function") {
+    const data = await response.json();
+    return typeof data === "string" ? data : JSON.stringify(data ?? "");
+  }
+  throw new WizarrError("無法讀取 Wizarr 回應", response.status ?? 0);
+}
+
+function isOk(response: { ok?: boolean; status?: number }): boolean {
+  if (typeof response.ok === "boolean") return response.ok;
+  const status = response.status ?? 0;
+  return status >= 200 && status < 300;
+}
+
+function compareText(a: string, b: string): number {
+  try {
+    return a.localeCompare(b, "zh-Hant");
+  } catch {
+    return a < b ? -1 : a > b ? 1 : 0;
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
