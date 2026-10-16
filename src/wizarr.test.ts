@@ -137,7 +137,7 @@ describe("createWizarrClient", () => {
     });
     await assert.rejects(() => client.listServers(), (error: unknown) => {
       assert.ok(error instanceof WizarrError);
-      assert.equal(error.message, "fetch failed");
+      assert.equal(error.message, "fetch failed（https://wizarr.example）");
       assert.equal(error.status, 0);
       assert.equal(error.connection, true);
       return true;
@@ -177,6 +177,29 @@ describe("createWizarrClient", () => {
     assert.equal(await client.deleteUser(1), null);
     assert.equal((await client.extendUser(1, 7)).message, null);
     assert.equal((await client.resetPassword(1)).message, null);
+  });
+
+  it("沒有內容的請求不帶 body 欄位", async () => {
+    const calls: Array<RequestInit | undefined> = [];
+    const client = createWizarrClient({
+      apiBase: "https://wizarr.example/api",
+      apiKey: "k",
+      publicBase: "https://wizarr.example",
+      fetchImpl: async (_input, init) => {
+        calls.push(init);
+        return new Response(JSON.stringify({ users: [], message: "ok" }), { status: 200 });
+      },
+    });
+    await client.listUsers();
+    await client.enableUser(3);
+    await client.disableUser(3);
+    await client.deleteUser(3);
+    await client.resetPassword(3);
+    await client.extendUser(3, 7);
+    for (const init of calls.slice(0, 5)) {
+      assert.equal(Object.hasOwn(init ?? {}, "body"), false);
+    }
+    assert.equal(calls[5]?.body, JSON.stringify({ days: 7 }));
   });
 
   it("列出使用者不依賴 URLSearchParams", async () => {

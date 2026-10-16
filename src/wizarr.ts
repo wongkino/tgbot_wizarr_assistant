@@ -42,16 +42,21 @@ export function createWizarrClient(options: WizarrClientOptions): WizarrApi {
     };
     if (init?.body !== undefined) headers["Content-Type"] = "application/json";
 
+    const call: { method: string; headers: Record<string, string>; body?: string } = {
+      method: init?.method ?? "GET",
+      headers,
+    };
+    // 沒有 body 時不要放這個欄位。Telegram Serverless 的 fetch 看到 body: undefined 會直接失敗。
+    if (init?.body !== undefined) call.body = JSON.stringify(init.body);
+
     let response: Response;
     try {
-      response = await fetchImpl(`${apiBase}${path}`, {
-        method: init?.method ?? "GET",
-        headers,
-        body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-      });
+      response = await fetchImpl(`${apiBase}${path}`, call);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      throw new WizarrError(reason, 0, true);
+      const where = endpointOrigin(apiBase);
+      const hint = isPrivateHost(where) ? "。Telegram 連不到區網位址，請把 WIZARR_URL 改成公開的 https 網址" : "";
+      throw new WizarrError(`${reason}（${where}）${hint}`, 0, true);
     }
 
     let text: string;
@@ -267,6 +272,26 @@ function isOk(response: { ok?: boolean; status?: number }): boolean {
   if (typeof response.ok === "boolean") return response.ok;
   const status = response.status ?? 0;
   return status >= 200 && status < 300;
+}
+
+function endpointOrigin(apiBase: string): string {
+  return /^(https?:\/\/[^/?#]+)/i.exec(apiBase)?.[1] ?? apiBase;
+}
+
+function isPrivateHost(origin: string): boolean {
+  const host = origin
+    .replace(/^https?:\/\//i, "")
+    .replace(/:\d+$/, "")
+    .replace(/^\[|\]$/g, "")
+    .toLowerCase();
+  if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal") || host === "host.docker.internal") {
+    return true;
+  }
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!ipv4) return false;
+  const a = Number(ipv4[1]);
+  const b = Number(ipv4[2]);
+  return a === 10 || a === 127 || a === 0 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254);
 }
 
 function compareText(a: string, b: string): number {
