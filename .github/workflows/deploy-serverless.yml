@@ -1,0 +1,55 @@
+name: Deploy Telegram Serverless
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run tg:bundle
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Bundle and write config
+        env:
+          TELEGRAM_ADMIN_IDS: ${{ secrets.TELEGRAM_ADMIN_IDS }}
+          WIZARR_URL: ${{ secrets.WIZARR_URL }}
+          WIZARR_API_KEY: ${{ secrets.WIZARR_API_KEY }}
+          WIZARR_PUBLIC_URL: ${{ secrets.WIZARR_PUBLIC_URL }}
+          TIMEZONE: ${{ secrets.TIMEZONE }}
+        run: |
+          node scripts/build-serverless.mjs
+          node scripts/write-tg-config.mjs
+      - name: Sync cloud revision
+        env:
+          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+        run: npx tgcloud fetch
+      - name: Deploy modules
+        env:
+          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+        run: npx tgcloud push
+      - name: Apply database schema
+        env:
+          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+        run: npx tgcloud migrate --safe
+      - name: Sync webhook
+        env:
+          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+        run: npx tgcloud webhook sync

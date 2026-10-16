@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { ConfigError, loadConfig, parseAdminIds, splitWizarrUrl } from "./config.ts";
+import { ConfigError, loadConfig, loadServerlessConfig, parseAdminIds, splitWizarrUrl } from "./config.ts";
 
 describe("splitWizarrUrl", () => {
   it("補上 /api，並保留對外根網址", () => {
@@ -58,6 +58,20 @@ describe("loadConfig", () => {
       /TELEGRAM_WEBHOOK_SECRET/,
     );
     assert.throws(() => parseAdminIds("12, abc"), /abc/);
+  });
+
+  it("Serverless 不需要 bot token，仍驗證 Wizarr 位址", () => {
+    const config = loadServerlessConfig({
+      adminIds: "7",
+      wizarrUrl: "https://wizarr.example/api/",
+      wizarrApiKey: "key",
+      timeZone: "Asia/Taipei",
+    });
+    assert.equal(config.telegramToken, "serverless");
+    assert.equal(config.mode, "polling");
+    assert.equal(config.wizarrApiBase, "https://wizarr.example/api");
+    assert.equal(config.timeZone, "Asia/Taipei");
+    assert.throws(() => loadServerlessConfig({ wizarrUrl: "wizarr.local", wizarrApiKey: "key" }), ConfigError);
   });
 
   it("TIMEZONE 預設 Asia/Hong_Kong，可自訂並會驗證", () => {

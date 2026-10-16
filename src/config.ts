@@ -29,6 +29,27 @@ export function splitWizarrUrl(input: string): { apiBase: string; publicBase: st
   };
 }
 
+export interface ServerlessConfigInput {
+  adminIds?: string;
+  wizarrUrl?: string;
+  wizarrApiKey?: string;
+  wizarrPublicUrl?: string;
+  timeZone?: string;
+}
+
+/** Telegram Serverless 已代為呼叫 Bot API，不需要 bot token 或 webhook 密鑰。 */
+export function loadServerlessConfig(input: ServerlessConfigInput): AppConfig {
+  return loadConfig({
+    TELEGRAM_BOT_TOKEN: "serverless",
+    TELEGRAM_ADMIN_IDS: input.adminIds,
+    WIZARR_URL: input.wizarrUrl,
+    WIZARR_API_KEY: input.wizarrApiKey,
+    TIMEZONE: input.timeZone,
+    WIZARR_PUBLIC_URL: input.wizarrPublicUrl,
+    MODE: "polling",
+  });
+}
+
 export function loadConfig(env: EnvLike): AppConfig {
   const token = required(env, "TELEGRAM_BOT_TOKEN");
   const wizarrUrl = required(env, "WIZARR_URL");

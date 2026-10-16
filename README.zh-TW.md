@@ -6,6 +6,7 @@
 
 - Docker 版在 [`docker/`](docker/)，長駐執行，預設 long polling
 - Worker 版在 [`worker/`](worker/)，由 GitHub Action 部署到 Cloudflare
+- Telegram Serverless 版在 [`tgcloud/`](tgcloud/)，跑在 Telegram 自己的基礎設施上
 - 介面支援繁體中文、简体中文、English、日本語四種語言切換，預設英文
 
 只接受允許清單裡的帳號，而且只在私訊中提供功能。共用邏輯在 `src/`。
@@ -22,13 +23,13 @@
 
 建立邀請會依序詢問：伺服器、邀請連結有效期、帳號期限、媒體庫、下載 / 直播 / 上傳。停用與刪除都要再按一次確認。列出或建立邀請時，會再送出該邀請網址的 QR code（可在「⚙️ 設定 → 📱 QR code」關閉）。只有一台已驗證伺服器時會自動使用該台；多台時會列出 #ID 與名稱對照，可複選後一次邀請多台。
 
-快速邀請會立即建立邀請，不用再選擇伺服器：跟隨設定預設媒體庫時勾選的伺服器與媒體庫；從未設定時則涵蓋所有已驗證的伺服器（Emby、Plex 等）。預設值為：連結 7 天、帳號無限制，下載、直播與上傳皆關閉，媒體庫為全部已啟用的媒體庫。這些預設值都能在主選單的「⚙️ 設定 → ⚡ 快速邀請設定」調整：連結有效期、帳號期限、權限、預設媒體庫（逐台選擇伺服器與旗下媒體庫，選完一台可再加入其他伺服器；伺服器缺少所選媒體庫時不會建立），以及是否沿用代碼。連結到期前再按會沿用同一組代碼（永不過期的連結會一直沿用），但更改任何設定後會新建一組；關閉沿用後每次都會建立新邀請。設定與代碼在 Worker 版記在 KV，Docker 版重啟後會還原預設值。
+快速邀請會立即建立邀請，不用再選擇伺服器：跟隨設定預設媒體庫時勾選的伺服器與媒體庫；從未設定時則涵蓋所有已驗證的伺服器（Emby、Plex 等）。預設值為：連結 7 天、帳號無限制，下載、直播與上傳皆關閉，媒體庫為全部已啟用的媒體庫。這些預設值都能在主選單的「⚙️ 設定 → ⚡ 快速邀請設定」調整：連結有效期、帳號期限、權限、預設媒體庫（逐台選擇伺服器與旗下媒體庫，選完一台可再加入其他伺服器；伺服器缺少所選媒體庫時不會建立），以及是否沿用代碼。連結到期前再按會沿用同一組代碼（永不過期的連結會一直沿用），但更改任何設定後會新建一組；關閉沿用後每次都會建立新邀請。設定與代碼在 Worker 版記在 KV、Telegram Serverless 版記在 SQLite，Docker 版重啟後會還原預設值。
 
 Wizarr 在停用失敗時可能改為刪除帳號，確認畫面會先說明這件事。邀請網址若是 `/j/...` 這類相對路徑，會補上 `WIZARR_PUBLIC_URL`。
 
 ## 多語言
 
-介面支援繁體中文、简体中文、English、日本語，預設英文。第一次使用時機器人會要求選擇語言，之後隨時可在「⚙️ 設定 → 🌐 語言」切換。語言偏好記在每位使用者的 session store（Worker 版在 KV）。
+介面支援繁體中文、简体中文、English、日本語，預設英文。第一次使用時機器人會要求選擇語言，之後隨時可在「⚙️ 設定 → 🌐 語言」切換。語言偏好記在每位使用者的 session store（Worker 版在 KV，Telegram Serverless 版在 SQLite）。
 
 每種語言是一個獨立檔案，放在 `src/i18n/`（`en.ts`、`zh-TW.ts`、`zh-CN.ts`、`ja.ts`）。語言檔只放純字串資料（模板用 `{佔位符}`），共用邏輯集中在 `src/i18n/build.ts` 的 `buildCatalog()`；資料結構由 `CatalogStrings` 定義，漏填任何字串都會在編譯期報錯。新增語言的步驟：
 
@@ -96,6 +97,39 @@ API token 可在 Cloudflare 儀表板的 My Profile → API Tokens 建立。然�
 
 本地除錯可複製 `worker/.dev.vars.example` 為 `worker/.dev.vars`，再執行 `npm run cf:dev`。
 
+## Telegram Serverless
+
+程式跑在 Telegram 自己的基礎設施上，入口在 [`tgcloud/`](tgcloud/)。共用邏輯仍在 `src/`。`npm run tg:build` 會把程式編成 `tgcloud/lib/bot.js`，並依 `serverless/.env` 寫出 `tgcloud/lib/config.js`。這兩個檔含連線資料，已列入 `.gitignore`。
+
+Wizarr 必須能從公網連到。只聽區網時請繼續用 Docker，或先把 Wizarr 公開出來。
+
+同一個 bot 只能有一個更新來源。部署後平台會接管 webhook，請停掉 Docker polling 與 Cloudflare Worker。
+
+1. 在 @BotFather 打開 bot → Serverless，啟用後到 CLI Access 複製 Access token。這組 token 與 bot token 不同。
+2. 複製 `serverless/.env.example` 為 `serverless/.env`，填入 Wizarr 位址、API key 與允許的 Telegram ID。
+3. 部署：
+
+```bash
+npx tgcloud login
+npm run tg:build
+npx tgcloud push
+npx tgcloud migrate --safe
+npx tgcloud webhook sync
+```
+
+也可以在 GitHub Actions 手動執行 [Deploy Telegram Serverless](.github/workflows/deploy-serverless.yml)。Secrets：
+
+| Secret | 說明 |
+| --- | --- |
+| `TGCLOUD_TOKEN` | BotFather → Serverless → CLI Access 的 token，格式 `app:…` |
+| `TELEGRAM_ADMIN_IDS` | 允許操作的 Telegram ID，逗號分隔 |
+| `WIZARR_URL` | 公開的 Wizarr 位址 |
+| `WIZARR_API_KEY` | Wizarr API key |
+| `WIZARR_PUBLIC_URL` | 邀請連結用的對外網址 |
+| `TIMEZONE` | 選填。日期顯示的 IANA 時區，預設 `Asia/Hong_Kong` |
+
+不需要 `TELEGRAM_BOT_TOKEN` 與 `TELEGRAM_WEBHOOK_SECRET`。平台代為呼叫 Bot API，並自己管理 webhook。對話狀態存在 SQLite 的 `records` 表，第一次部署要跑 `migrate` 建立它。
+
 ## 本機開發
 
 需要 Node.js 22 或以上。
@@ -108,7 +142,7 @@ cp docker/.env.example docker/.env
 npm run dev
 ```
 
-`npm run build` 會產出 `dist/node.mjs`，給 Docker 映像使用。
+`npm run build` 會產出 `dist/node.mjs`，給 Docker 映像使用。`npm run tg:bundle` 會產出 Telegram Serverless 用的 `tgcloud/lib/bot.js`。
 
 ## 授權
 

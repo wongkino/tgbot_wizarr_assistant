@@ -6,6 +6,7 @@ Telegram の**返信キーボード**（Reply Keyboard）で [Wizarr](https://gi
 
 - Docker 版は [`docker/`](docker/)。常駐実行、デフォルトは long polling
 - Worker 版は [`worker/`](worker/)。GitHub Action で Cloudflare にデプロイ
+- Telegram Serverless 版は [`tgcloud/`](tgcloud/)。Telegram 自身のインフラで動く
 - UI は English・繁體中文・简体中文・日本語の 4 言語に切替可能。デフォルトは英語
 
 許可リストにあるアカウントのみ、個人チャットでのみ利用できます。共通ロジックは `src/` にあります。
@@ -22,13 +23,13 @@ Telegram の**返信キーボード**（Reply Keyboard）で [Wizarr](https://gi
 
 招待の作成は、サーバー → リンク有効期限 → アカウント期限 → ライブラリ → ダウンロード / ライブ / アップロードの順に聞きます。無効化と削除は確認ボタンをもう一度押す必要があります。招待の一覧・作成時には招待 URL の QR code も送信します（「⚙️ 設定 → 📱 QR code」でオフにできます）。認証済みサーバーが 1 台だけなら自動的にそのサーバーを使用し、複数ある場合は #ID と名前の一覧を表示して複数選択でき、1 回の招待で複数台をまとめてカバーできます。
 
-クイック招待はサーバー選択なしで即座に招待を作成します：既定ライブラリの設定で選択したサーバーとライブラリに従い、未設定の場合はすべての認証済みサーバー（Emby・Plex など）を対象にします。既定値は：リンク 7 日、アカウント無制限、ダウンロード・ライブ・アップロードはすべてオフ、ライブラリはすべての有効なライブラリです。これらの既定値はメインメニューの「⚙️ 設定 → ⚡ クイック招待設定」で変更できます：リンク有効期限、アカウント期限、権限、既定ライブラリ（サーバーを 1 台ずつ選んでそのライブラリを選択し、選んだ後に他のサーバーも追加できます。サーバーに選択したライブラリがない場合は作成されません）、コード使い回しのオン/オフ。リンクの期限内に再度押すと同じコードを使い回し（無期限リンクは常に使い回します）、設定を変えると新しいコードを作成します。使い回しをオフにすると、毎回新しい招待を作成します。設定とコードは Worker 版では KV に保存され、Docker 版は再起動すると既定値に戻ります。
+クイック招待はサーバー選択なしで即座に招待を作成します：既定ライブラリの設定で選択したサーバーとライブラリに従い、未設定の場合はすべての認証済みサーバー（Emby・Plex など）を対象にします。既定値は：リンク 7 日、アカウント無制限、ダウンロード・ライブ・アップロードはすべてオフ、ライブラリはすべての有効なライブラリです。これらの既定値はメインメニューの「⚙️ 設定 → ⚡ クイック招待設定」で変更できます：リンク有効期限、アカウント期限、権限、既定ライブラリ（サーバーを 1 台ずつ選んでそのライブラリを選択し、選んだ後に他のサーバーも追加できます。サーバーに選択したライブラリがない場合は作成されません）、コード使い回しのオン/オフ。リンクの期限内に再度押すと同じコードを使い回し（無期限リンクは常に使い回します）、設定を変えると新しいコードを作成します。使い回しをオフにすると、毎回新しい招待を作成します。設定とコードは Worker 版では KV、Telegram Serverless 版では SQLite に保存され、Docker 版は再起動すると既定値に戻ります。
 
 Wizarr は無効化に失敗するとアカウントを削除する場合があり、確認画面で先にその旨を表示します。招待 URL が `/j/...` のような相対パスの場合は `WIZARR_PUBLIC_URL` を補います。
 
 ## 多言語
 
-UI は繁體中文・简体中文・English・日本語に対応し、デフォルトは英語です。初回使用時にボットが言語を尋ね、以後は「⚙️ 設定 → 🌐 言語」からいつでも切り替えられます。言語設定はユーザーごとに session store（Worker 版では KV）に保存されます。
+UI は繁體中文・简体中文・English・日本語に対応し、デフォルトは英語です。初回使用時にボットが言語を尋ね、以後は「⚙️ 設定 → 🌐 言語」からいつでも切り替えられます。言語設定はユーザーごとに session store（Worker 版では KV、Telegram Serverless 版では SQLite）に保存されます。
 
 各言語は `src/i18n/` の独立したファイル（`en.ts`、`zh-TW.ts`、`zh-CN.ts`、`ja.ts`）です。言語ファイルは純粋な文字列データのみ（テンプレートは `{プレースホルダー}` 形式）で、共通ロジックは `src/i18n/build.ts` の `buildCatalog()` に集約されています。データ構造は `CatalogStrings` で定義され、文字列の欠落はコンパイル時にエラーになります。言語を追加する手順：
 
@@ -96,6 +97,39 @@ API token は Cloudflare ダッシュボードの My Profile → API Tokens で�
 
 ローカルでのデバッグは `worker/.dev.vars.example` を `worker/.dev.vars` にコピーして `npm run cf:dev` を実行します。
 
+## Telegram Serverless
+
+ボットは Telegram 自身のインフラで動きます。入口は [`tgcloud/`](tgcloud/) です。共通ロジックは `src/` のままです。`npm run tg:build` が `tgcloud/lib/bot.js` を作り、`serverless/.env` から `tgcloud/lib/config.js` を書き出します。この 2 ファイルには接続情報が入るため `.gitignore` に入っています。
+
+Wizarr は公開ネットワークから到達できる必要があります。LAN 内だけなら Docker を使うか、先に Wizarr を公開してください。
+
+1 つのボットが受け取れる更新元は 1 つだけです。デプロイ後はプラットフォームが webhook を管理するので、Docker の polling と Cloudflare Worker は止めてください。
+
+1. @BotFather でボット → Serverless を開き、有効化して CLI Access の Access token をコピーします。ボット token とは別です。
+2. `serverless/.env.example` を `serverless/.env` にコピーし、Wizarr のアドレス、API key、許可する Telegram ID を記入します。
+3. デプロイ：
+
+```bash
+npx tgcloud login
+npm run tg:build
+npx tgcloud push
+npx tgcloud migrate --safe
+npx tgcloud webhook sync
+```
+
+GitHub Actions から [Deploy Telegram Serverless](.github/workflows/deploy-serverless.yml) を手動実行することもできます。Secrets：
+
+| Secret | 説明 |
+| --- | --- |
+| `TGCLOUD_TOKEN` | BotFather → Serverless → CLI Access の token。形式は `app:…` |
+| `TELEGRAM_ADMIN_IDS` | 操作を許可する Telegram ID。カンマ区切り |
+| `WIZARR_URL` | 公開された Wizarr のアドレス |
+| `WIZARR_API_KEY` | Wizarr API key |
+| `WIZARR_PUBLIC_URL` | 招待リンクに使う外部 URL |
+| `TIMEZONE` | 任意。日付表示の IANA タイムゾーン。既定は `Asia/Hong_Kong` |
+
+`TELEGRAM_BOT_TOKEN` と `TELEGRAM_WEBHOOK_SECRET` は不要です。プラットフォームが Bot API を呼び、webhook も管理します。会話状態は SQLite の `records` テーブルに保存されます。初回デプロイでは `migrate` でこのテーブルを作成します。
+
 ## ローカル開発
 
 Node.js 22 以上が必要です。
@@ -108,7 +142,7 @@ cp docker/.env.example docker/.env
 npm run dev
 ```
 
-`npm run build` は Docker イメージ用の `dist/node.mjs` を生成します。
+`npm run build` は Docker イメージ用の `dist/node.mjs` を生成します。`npm run tg:bundle` は Telegram Serverless 用の `tgcloud/lib/bot.js` を生成します。
 
 ## ライセンス
 

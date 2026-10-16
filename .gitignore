@@ -4,6 +4,10 @@ dist/
 docker/.env
 .dev.vars
 worker/.dev.vars
+serverless/.env
+tgcloud/lib/bot.js
+tgcloud/lib/config.js
+.tgcloud/
 .wrangler/
 worker/.wrangler/
 *.log

@@ -10,7 +10,12 @@ export interface App {
   handle(update: Update): Promise<void>;
 }
 
-export function createApp(config: AppConfig, sessions: SessionStore, fetchImpl?: typeof fetch): App {
+export function createApp(
+  config: AppConfig,
+  sessions: SessionStore,
+  fetchImpl?: typeof fetch,
+  telegram?: TelegramApi,
+): App {
   setDateTimeZone(config.timeZone);
   const wizarr = createWizarrClient({
     apiBase: config.wizarrApiBase,
@@ -18,12 +23,12 @@ export function createApp(config: AppConfig, sessions: SessionStore, fetchImpl?:
     publicBase: config.wizarrPublicUrl,
     fetchImpl,
   });
-  const telegram = createTelegramClient(config.telegramToken, fetchImpl);
+  const client = telegram ?? createTelegramClient(config.telegramToken, fetchImpl);
   return {
     config,
-    telegram,
+    telegram: client,
     handle(update) {
-      return handleUpdate(update, { config, wizarr, telegram, sessions });
+      return handleUpdate(update, { config, wizarr, telegram: client, sessions });
     },
   };
 }
