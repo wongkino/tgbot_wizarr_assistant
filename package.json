@@ -3,18 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Telegram reply-keyboard bot for the Wizarr API, deployable as a Docker image, Cloudflare Worker, or Telegram Serverless project.",
+  "description": "Telegram reply-keyboard bot for the Wizarr API, running on Telegram Serverless.",
   "license": "MIT",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "build": "esbuild docker/node.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/node.mjs",
-    "start": "node dist/node.mjs",
-    "dev": "node --env-file=docker/.env --experimental-strip-types docker/node.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test src/*.test.ts",
-    "cf:dev": "wrangler dev --config worker/wrangler.jsonc",
     "tg:bundle": "node scripts/build-serverless.mjs",
     "tg:config": "node --env-file=serverless/.env scripts/write-tg-config.mjs",
     "tg:build": "node scripts/build-serverless.mjs && node --env-file=serverless/.env scripts/write-tg-config.mjs"
@@ -23,8 +19,7 @@
     "@tgcloud/cli": "^0.2.0",
     "@types/node": "^26.6.3",
     "esbuild": "^0.28.2",
-    "typescript": "^7.0.2",
-    "wrangler": "^4.144.0"
+    "typescript": "^7.0.2"
   },
   "dependencies": {
     "uqr": "^0.1.3"
