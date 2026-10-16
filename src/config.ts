@@ -7,8 +7,6 @@ export class ConfigError extends Error {
   }
 }
 
-type EnvLike = Record<string, string | undefined>;
-
 export function splitWizarrUrl(input: string): { apiBase: string; publicBase: string } {
   const url = parseHttpUrl(input, "WIZARR_URL");
   const path = url.pathname.replace(/\/+$/, "");
@@ -66,56 +64,25 @@ export interface ServerlessConfigInput {
   timeZone?: string;
 }
 
-/** Telegram Serverless 已代為呼叫 Bot API，不需要 bot token 或 webhook 密鑰。 */
+/** Telegram Serverless 已代為呼叫 Bot API，這裡只驗證 Wizarr 與允許的帳號。 */
 export function loadServerlessConfig(input: ServerlessConfigInput): AppConfig {
-  return loadConfig({
-    TELEGRAM_BOT_TOKEN: "serverless",
-    TELEGRAM_ADMIN_IDS: input.adminIds,
-    WIZARR_URL: input.wizarrUrl,
-    WIZARR_API_KEY: input.wizarrApiKey,
-    TIMEZONE: input.timeZone,
-    WIZARR_PUBLIC_URL: input.wizarrPublicUrl,
-    MODE: "polling",
-  });
-}
-
-export function loadConfig(env: EnvLike): AppConfig {
-  const token = required(env, "TELEGRAM_BOT_TOKEN");
-  const wizarrUrl = required(env, "WIZARR_URL");
-  const apiKey = required(env, "WIZARR_API_KEY");
+  const wizarrUrl = required(input.wizarrUrl, "WIZARR_URL");
+  const apiKey = required(input.wizarrApiKey, "WIZARR_API_KEY");
   const { apiBase, publicBase } = splitWizarrUrl(wizarrUrl);
-  const rawPublic = env.WIZARR_PUBLIC_URL?.trim() ?? "";
+  const rawPublic = input.wizarrPublicUrl?.trim() ?? "";
   const publicOverride = rawPublic ? cleanUrl(rawPublic) : "";
   if (publicOverride) parseHttpUrl(publicOverride, "WIZARR_PUBLIC_URL");
 
-  const mode = (env.MODE?.trim() || "polling").toLowerCase();
-  if (mode !== "polling" && mode !== "webhook") {
-    throw new ConfigError("MODE 只能是 polling 或 webhook");
-  }
-  const webhookSecret = env.TELEGRAM_WEBHOOK_SECRET?.trim() ?? "";
-  if (mode === "webhook" && !webhookSecret) {
-    throw new ConfigError("MODE=webhook 時必須設定 TELEGRAM_WEBHOOK_SECRET");
-  }
-
-  const port = Number(env.PORT?.trim() || "8080");
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new ConfigError("PORT 必須是 1 到 65535 的整數");
-  }
-
-  const timeZone = env.TIMEZONE?.trim() || "Asia/Hong_Kong";
+  const timeZone = input.timeZone?.trim() || "Asia/Hong_Kong";
   if (!isValidTimeZone(timeZone)) {
     throw new ConfigError("TIMEZONE 必須是有效的 IANA 時區名稱，例如 Asia/Taipei");
   }
 
   return {
-    telegramToken: token,
-    webhookSecret,
-    adminIds: parseAdminIds(env.TELEGRAM_ADMIN_IDS),
+    adminIds: parseAdminIds(input.adminIds),
     wizarrApiBase: apiBase,
     wizarrApiKey: apiKey,
     wizarrPublicUrl: (publicOverride || publicBase).replace(/\/+$/, ""),
-    mode,
-    port,
     timeZone,
   };
 }
@@ -129,12 +96,12 @@ function isValidTimeZone(zone: string): boolean {
   }
 }
 
-function required(env: EnvLike, name: string): string {
-  const value = env[name]?.trim();
-  if (!value) {
+function required(value: string | undefined, name: string): string {
+  const trimmed = value?.trim();
+  if (!trimmed) {
     throw new ConfigError(`缺少環境變數：${name}`);
   }
-  return value;
+  return trimmed;
 }
 
 export function parseAdminIds(raw: string | undefined): Set<number> {

@@ -1,20 +1,17 @@
 import { setDateTimeZone } from "./format.ts";
 import { handleUpdate } from "./handler.ts";
-import { createTelegramClient } from "./telegram.ts";
 import type { AppConfig, SessionStore, TelegramApi, Update } from "./types.ts";
 import { createWizarrClient } from "./wizarr.ts";
 
 export interface App {
-  config: AppConfig;
-  telegram: TelegramApi;
   handle(update: Update): Promise<void>;
 }
 
 export function createApp(
   config: AppConfig,
   sessions: SessionStore,
+  telegram: TelegramApi,
   fetchImpl?: typeof fetch,
-  telegram?: TelegramApi,
 ): App {
   setDateTimeZone(config.timeZone);
   const wizarr = createWizarrClient({
@@ -23,12 +20,9 @@ export function createApp(
     publicBase: config.wizarrPublicUrl,
     fetchImpl,
   });
-  const client = telegram ?? createTelegramClient(config.telegramToken, fetchImpl);
   return {
-    config,
-    telegram: client,
     handle(update) {
-      return handleUpdate(update, { config, wizarr, telegram: client, sessions });
+      return handleUpdate(update, { config, wizarr, telegram, sessions });
     },
   };
 }

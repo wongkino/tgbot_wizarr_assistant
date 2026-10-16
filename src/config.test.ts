@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { ConfigError, loadConfig, loadServerlessConfig, parseAdminIds, splitWizarrUrl } from "./config.ts";
+import { ConfigError, loadServerlessConfig, parseAdminIds, splitWizarrUrl } from "./config.ts";
 
 describe("splitWizarrUrl", () => {
   it("補上 /api，並保留對外根網址", () => {
@@ -33,57 +33,43 @@ describe("splitWizarrUrl", () => {
   });
 });
 
-describe("loadConfig", () => {
+describe("loadServerlessConfig", () => {
   it("解析管理員 ID 與公開網址", () => {
-    const config = loadConfig({
-      TELEGRAM_BOT_TOKEN: "token",
-      TELEGRAM_ADMIN_IDS: "7, 8",
-      WIZARR_URL: "http://host:5690",
-      WIZARR_API_KEY: "key",
-      WIZARR_PUBLIC_URL: "https://invite.example/",
-      MODE: "webhook",
-      PORT: "9090",
-      TELEGRAM_WEBHOOK_SECRET: "secret",
+    const config = loadServerlessConfig({
+      adminIds: "7, 8",
+      wizarrUrl: "http://host:5690",
+      wizarrApiKey: "key",
+      wizarrPublicUrl: "https://invite.example/",
+      timeZone: "Asia/Taipei",
     });
     assert.deepEqual([...config.adminIds], [7, 8]);
     assert.equal(config.wizarrPublicUrl, "https://invite.example");
-    assert.equal(config.mode, "webhook");
-    assert.equal(config.port, 9090);
+    assert.equal(config.wizarrApiBase, "http://host:5690/api");
+    assert.equal(config.timeZone, "Asia/Taipei");
   });
 
-  it("缺少 token 或 ID 格式錯誤時拒絕啟動", () => {
-    assert.throws(() => loadConfig({ WIZARR_URL: "http://host", WIZARR_API_KEY: "k" }), /TELEGRAM_BOT_TOKEN/);
+  it("缺少 API key 或 ID 格式錯誤時拒絕啟動", () => {
+    assert.throws(() => loadServerlessConfig({ wizarrUrl: "http://host" }), /WIZARR_API_KEY/);
     assert.throws(
-      () =>
-        loadConfig({
-          TELEGRAM_BOT_TOKEN: "token",
-          WIZARR_URL: "http://host",
-          WIZARR_API_KEY: "k",
-          MODE: "webhook",
-        }),
-      /TELEGRAM_WEBHOOK_SECRET/,
+      () => loadServerlessConfig({ wizarrUrl: "http://host", wizarrApiKey: "k", adminIds: "12, abc" }),
+      /abc/,
     );
     assert.throws(() => parseAdminIds("12, abc"), /abc/);
   });
 
-  it("Serverless 不需要 bot token，仍驗證 Wizarr 位址", () => {
+  it("仍驗證 Wizarr 位址", () => {
     const config = loadServerlessConfig({
       adminIds: "7",
       wizarrUrl: "https://wizarr.example/api/",
       wizarrApiKey: "key",
-      timeZone: "Asia/Taipei",
     });
-    assert.equal(config.telegramToken, "serverless");
-    assert.equal(config.mode, "polling");
     assert.equal(config.wizarrApiBase, "https://wizarr.example/api");
-    assert.equal(config.timeZone, "Asia/Taipei");
     assert.throws(() => loadServerlessConfig({ wizarrUrl: "wizarr.local", wizarrApiKey: "key" }), ConfigError);
   });
 
   it("TIMEZONE 預設 Asia/Hong_Kong，可自訂並會驗證", () => {
-    const base = { TELEGRAM_BOT_TOKEN: "token", WIZARR_URL: "http://host", WIZARR_API_KEY: "key" };
-    assert.equal(loadConfig(base).timeZone, "Asia/Hong_Kong");
-    assert.equal(loadConfig({ ...base, TIMEZONE: "Asia/Taipei" }).timeZone, "Asia/Taipei");
-    assert.throws(() => loadConfig({ ...base, TIMEZONE: "Mars/Olympus" }), /TIMEZONE/);
+    const base = { wizarrUrl: "http://host", wizarrApiKey: "key" };
+    assert.equal(loadServerlessConfig(base).timeZone, "Asia/Hong_Kong");
+    assert.throws(() => loadServerlessConfig({ ...base, timeZone: "Mars/Olympus" }), /TIMEZONE/);
   });
 });

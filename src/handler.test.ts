@@ -20,14 +20,10 @@ const cat = catalogFor("zh-TW");
 const B = cat.buttons;
 
 const config: AppConfig = {
-  telegramToken: "token",
-  webhookSecret: "",
   adminIds: new Set([7]),
   wizarrApiBase: "https://wizarr.example/api",
   wizarrApiKey: "key",
   wizarrPublicUrl: "https://wizarr.example",
-  mode: "polling",
-  port: 8080,
   timeZone: "Asia/Hong_Kong",
 };
 
@@ -54,12 +50,6 @@ class Recorder {
   async sendPhoto(_chatId: number, image: Uint8Array, caption?: string): Promise<void> {
     this.photos.push({ image, caption });
   }
-
-  async getUpdates(): Promise<Update[]> {
-    return [];
-  }
-
-  async deleteWebhook(): Promise<void> {}
 
   last(): { text: string; markup?: ReplyMarkup } {
     const item = this.messages.at(-1);

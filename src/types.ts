@@ -132,8 +132,6 @@ export type ReplyMarkup =
 export interface TelegramApi {
   sendMessage(chatId: number, text: string, markup?: ReplyMarkup): Promise<void>;
   sendPhoto(chatId: number, image: Uint8Array, caption?: string): Promise<void>;
-  getUpdates(offset: number, signal?: AbortSignal): Promise<Update[]>;
-  deleteWebhook(): Promise<void>;
 }
 
 export interface TelegramUser {
@@ -230,14 +228,10 @@ export interface SessionStore {
 }
 
 export interface AppConfig {
-  telegramToken: string;
-  webhookSecret: string;
   adminIds: Set<number>;
   wizarrApiBase: string;
   wizarrApiKey: string;
   wizarrPublicUrl: string;
-  mode: "polling" | "webhook";
-  port: number;
   /** 日期顯示使用的 IANA 時區名稱。 */
   timeZone: string;
 }

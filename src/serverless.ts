@@ -43,10 +43,6 @@ export function createSdkTelegram(api: ServerlessBotApi, InputFile: ServerlessIn
         ...(caption ? { caption, parse_mode: "HTML" } : {}),
       });
     },
-    async getUpdates() {
-      return [];
-    },
-    async deleteWebhook() {},
   };
 }
 
@@ -64,8 +60,8 @@ export async function handleServerlessMessage(message: TelegramMessage, runtime:
   const app = createApp(
     config,
     new KvSessionStore(runtime.kv),
-    runtime.fetchImpl,
     createSdkTelegram(runtime.api, runtime.InputFile),
+    runtime.fetchImpl,
   );
   await app.handle({ update_id: 0, message });
 }
