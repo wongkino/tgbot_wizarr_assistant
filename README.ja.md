@@ -68,7 +68,7 @@ GitHub Actions から [Deploy Telegram Serverless](.github/workflows/deploy-serv
 
 ## ローカル開発
 
-Node.js 22 以上が必要です。
+Node.js 24（Active LTS、現在 24.22.1。`.nvmrc` を参照）が必要です。
 
 ```bash
 npm ci
