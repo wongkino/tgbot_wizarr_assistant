@@ -105,7 +105,9 @@ class MemoryStore<T> {
   }
 
   set(key: string, value: T, ttlSeconds: number): void {
-    this.rows.set(key, { value, expires: Date.now() + ttlSeconds * 1000 });
+    // 0 表示不過期；負數仍會立刻失效（測試用來模擬到期）。
+    const expires = ttlSeconds === 0 ? Number.POSITIVE_INFINITY : Date.now() + ttlSeconds * 1000;
+    this.rows.set(key, { value, expires });
   }
 
   delete(key: string): void {
@@ -180,6 +182,7 @@ export class KvSessionStore implements SessionStore {
 }
 
 function ttl(seconds: number): number {
+  if (seconds === 0) return 0;
   return Math.max(60, Math.floor(seconds));
 }
 

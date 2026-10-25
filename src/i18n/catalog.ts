@@ -182,6 +182,8 @@ export interface Catalog {
     noServersQuick: string;
     pickVerified: string;
     quickMissingLibraries(missing: string[], settingsButton: string): string;
+    /** 設定裡勾選的伺服器已不在已驗證清單。missing 為伺服器 id。 */
+    quickMissingServers(missing: number[], settingsButton: string): string;
     quickReuseTitle: string;
     inviteCreatedTitle: string;
     settingsExpiryPrompt: string;
