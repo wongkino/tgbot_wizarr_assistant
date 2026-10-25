@@ -43,8 +43,7 @@ export function langFromButton(text: string): Lang | null {
   return null;
 }
 
-/** 0 表示不過期，避免一年後又要求重新選語言。 */
-const LANG_TTL_SECONDS = 0;
+const LANG_TTL_SECONDS = 365 * 24 * 60 * 60;
 
 function langKey(userId: number): string {
   return `lang:${userId}`;

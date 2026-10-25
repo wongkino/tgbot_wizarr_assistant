@@ -58,18 +58,6 @@ describe("快速邀請設定", () => {
     assert.equal(sameQuickSettings(withServers, { ...a, serverIds: [1, 2] }), true);
     assert.equal(sameQuickSettings(withServers, { ...a, serverIds: [1] }), false);
     assert.equal(sameQuickSettings(withServers, { ...a, serverIds: null }), false);
-    const onServer = {
-      ...a,
-      libraries: a.libraries.map((item) => ({ ...item, serverId: 1 })),
-    };
-    assert.equal(sameQuickSettings(a, onServer), false);
-    assert.equal(
-      sameQuickSettings(
-        onServer,
-        { ...onServer, libraries: onServer.libraries.map((item) => ({ ...item, serverId: 2 })) },
-      ),
-      false,
-    );
     // reuseCode 不影響邀請內容，開關不同仍視為同一組設定
     assert.equal(sameQuickSettings(a, { ...a, reuseCode: !a.reuseCode }), true);
     assert.equal(sameQuickSettings(a, { ...a, showQr: !a.showQr }), true);
@@ -89,14 +77,6 @@ describe("快速邀請設定", () => {
     assert.equal(parseQuickSettings({ ...settings, serverIds: "all" }), null);
     assert.equal(parseQuickSettings({ ...settings, reuseCode: "yes" }), null);
     assert.equal(parseQuickSettings({ ...settings, showQr: "yes" }), null);
-    assert.equal(parseQuickSettings({ ...settings, libraries: [{ name: "Movies", externalId: "mov", serverId: 0 }] }), null);
-    const withServer = parseQuickSettings({
-      ...settings,
-      libraries: [{ name: "Movies", externalId: "mov", serverId: 2 }],
-    });
-    assert.equal(withServer?.libraries?.[0]?.serverId, 2);
-    const legacyMatcher = parseQuickSettings({ ...settings, libraries: [{ name: "Movies", externalId: "mov" }] });
-    assert.equal(legacyMatcher?.libraries?.[0]?.serverId, null);
     const parsed = parseQuickSettings(JSON.parse(JSON.stringify(settings)));
     assert.deepEqual(parsed, settings);
   });

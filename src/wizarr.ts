@@ -193,7 +193,7 @@ function parseInvitation(data: unknown, publicBase: string): InvitationInfo {
   return {
     id: numberOf(record.id),
     code,
-    url: toPublicUrl(publicBase, rawUrl || (code ? `/j/${code}` : "")),
+    url: absoluteUrl(publicBase, rawUrl || (code ? `/j/${code}` : "")),
     status: stringOf(record.status) ?? "pending",
     created: stringOf(record.created),
     expires: stringOf(record.expires),
@@ -246,7 +246,7 @@ function parseReset(data: unknown, publicBase: string): PasswordResetInfo {
   const rawUrl = stringOf(record.url) ?? "";
   return {
     message: stringOf(record.message),
-    url: toPublicUrl(publicBase, rawUrl),
+    url: absoluteUrl(publicBase, rawUrl),
     expiresAt: stringOf(record.expires_at),
   };
 }
@@ -278,35 +278,15 @@ function endpointOrigin(apiBase: string): string {
   return /^(https?:\/\/[^/?#]+)/i.exec(apiBase)?.[1] ?? apiBase;
 }
 
-/**
- * 絕對網址若落在區網，改寫到公開根網址，避免邀請與重設密碼連結、QR code 指向客人打不開的位址。
- * 已是公開絕對網址則保留（Wizarr 可能回傳與 WIZARR_PUBLIC_URL 不同的正式網址）。
- */
-function toPublicUrl(publicBase: string, raw: string): string {
-  if (!/^https?:\/\//i.test(raw)) return absoluteUrl(publicBase, raw);
-  const match = /^(https?:\/\/[^/?#]+)([^#]*)/i.exec(raw);
-  if (!match || !isPrivateHost(match[1])) return raw;
-  return absoluteUrl(publicBase, match[2] || "/");
-}
-
 function isPrivateHost(origin: string): boolean {
   const host = origin
     .replace(/^https?:\/\//i, "")
     .replace(/:\d+$/, "")
     .replace(/^\[|\]$/g, "")
     .toLowerCase();
-  if (
-    host === "localhost" ||
-    host === "::1" ||
-    host === "0:0:0:0:0:0:0:1" ||
-    host.endsWith(".local") ||
-    host.endsWith(".internal") ||
-    host === "host.docker.internal"
-  ) {
+  if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal") || host === "host.docker.internal") {
     return true;
   }
-  // fc00::/7（ULA）與 fe80::/10（link-local）。
-  if (/^f[cd][0-9a-f:]*$/.test(host) || /^fe[89ab][0-9a-f:]*$/.test(host)) return true;
   const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
   if (!ipv4) return false;
   const a = Number(ipv4[1]);

@@ -75,8 +75,6 @@ export interface PermissionFlags {
 export interface QuickLibraryMatcher {
   name: string;
   externalId: string | null;
-  /** 所屬伺服器。舊資料沒有此欄位時不限伺服器。 */
-  serverId?: number | null;
 }
 
 export interface QuickInviteSettings extends PermissionFlags {

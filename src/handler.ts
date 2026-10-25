@@ -1,7 +1,6 @@
 import {
   esc,
   formatDate,
-  parseTimestamp,
   formatInviteList,
   formatInviteSummary,
   formatLibraries,
@@ -106,9 +105,6 @@ export async function handleUpdate(update: Update, ctx: AppContext): Promise<voi
     await send(ctx, chatId, catalogFor(storedLang ?? DEFAULT_LANG).unauthorized(userId), removeKeyboard());
     return;
   }
-
-  // 平台重送同一則訊息時不要再執行一次（確認刪除、建立邀請會變成做兩次）。
-  if (!(await claimMessage(ctx.sessions, chatId, message.message_id))) return;
 
   if (storedLang === null) {
     try {
@@ -426,25 +422,10 @@ async function beginQuickInvite(ctx: Req, chatId: number): Promise<Screen> {
 
 async function createQuickInvite(ctx: Req, chatId: number, servers: ServerInfo[]): Promise<Screen> {
   const settings = await loadQuickSettings(ctx.sessions);
-  // 有勾選伺服器時，缺任何一台已驗證伺服器就不要建立，避免悄悄少包一台。
-  // 從未設定時才用全部已驗證伺服器。
+  // 跟隨設定裡勾選的伺服器（僅計算仍已驗證的）；從未設定時才用全部已驗證伺服器。
   const verifiedIds = new Set(servers.map((server) => server.id));
-  let serverIds: number[];
-  if (settings.serverIds?.length) {
-    const missing = settings.serverIds.filter((id) => !verifiedIds.has(id));
-    if (missing.length) {
-      await send(
-        ctx,
-        chatId,
-        ctx.cat.msg.quickMissingServers(missing, ctx.cat.buttons.settings),
-        invitesKeyboard(ctx.cat),
-      );
-      return { type: "invites" };
-    }
-    serverIds = [...settings.serverIds].sort((a, b) => a - b);
-  } else {
-    serverIds = sortedServerIds(servers);
-  }
+  const selectedIds = settings.serverIds?.filter((id) => verifiedIds.has(id)) ?? [];
+  let serverIds = settings.serverIds?.length ? selectedIds : sortedServerIds(servers);
   if (!serverIds.length) {
     await send(ctx, chatId, ctx.cat.msg.noServersQuick, invitesKeyboard(ctx.cat));
     return { type: "invites" };
@@ -515,32 +496,40 @@ function reusableQuickInvite(
 }
 
 function inviteReusable(invite: InvitationInfo, now: number): boolean {
-  // Wizarr 會把用過的無限邀請標成 used，連結仍然有效；有限邀請一旦 used 就不能再兌換。
-  const open = invite.status === "pending" || (invite.status === "used" && invite.unlimited);
-  if (!open) return false;
+  if (invite.status !== "pending" && invite.status !== "used") return false;
   // 永不過期的邀請本來就有效，可以直接沿用。
   if (!invite.expires) return true;
-  const time = parseTimestamp(invite.expires);
+  const time = Date.parse(invite.expires);
   return !Number.isNaN(time) && time > now;
 }
 
-/**
- * 比對預設媒體庫。有 externalId 時只認 externalId（重新命名仍對得到，也不會因同名多勾一台）；
- * 對不到才退回名稱。有 serverId 時只在那台伺服器裡找。
- */
+/** 用名稱或 externalId 比對預設媒體庫；回傳比對到的媒體庫與找不到的名稱。 */
 function matchLibraries(
   libraries: LibraryInfo[],
   matchers: QuickLibraryMatcher[],
 ): { selected: LibraryInfo[]; missing: string[] } {
-  const selected = new Map<number, LibraryInfo>();
+  return matchByKey(
+    libraries,
+    matchers,
+    (matcher) => matcher.name,
+    (library, matcher) =>
+      library.name === matcher.name || (matcher.externalId !== null && library.externalId === matcher.externalId),
+  );
+}
+
+/** 依 keys 逐一比對 items；比對不到的收入 missing（用 label 取名），比對到的去重後依 id 排序。 */
+function matchByKey<T extends { id: number }, K>(
+  items: T[],
+  keys: K[],
+  label: (key: K) => string,
+  matches: (item: T, key: K) => boolean,
+): { selected: T[]; missing: string[] } {
+  const selected = new Map<number, T>();
   const missing: string[] = [];
-  for (const matcher of matchers) {
-    const scoped = libraries.filter((library) => matcher.serverId == null || library.serverId === matcher.serverId);
-    const byExternal =
-      matcher.externalId == null ? [] : scoped.filter((library) => library.externalId === matcher.externalId);
-    const found = byExternal.length ? byExternal : scoped.filter((library) => library.name === matcher.name);
-    if (!found.length) missing.push(matcher.name);
-    for (const library of found) selected.set(library.id, library);
+  for (const key of keys) {
+    const found = items.filter((item) => matches(item, key));
+    if (!found.length) missing.push(label(key));
+    for (const item of found) selected.set(item.id, item);
   }
   return { selected: [...selected.values()].sort((a, b) => a.id - b.id), missing };
 }
@@ -578,9 +567,7 @@ async function rememberQuickInvite(
 ): Promise<void> {
   if (!code) return;
   const saved: SavedQuickInvite = { code, libraryIds, settings };
-  // 永不過期的代碼要一直記得；有期限的多留一天，過期後交給 inviteReusable 判斷。
-  const day = 24 * 60 * 60;
-  const ttl = settings.expiresInDays == null ? 0 : (settings.expiresInDays + 1) * day;
+  const ttl = ((settings.expiresInDays ?? 365) + 1) * 24 * 60 * 60;
   await ctx.sessions.setText(quickInviteKey(serverIds), JSON.stringify(saved), ttl);
 }
 
@@ -905,9 +892,7 @@ async function handleSettingsLibraryMore(
 /** 把逐台累計的選擇存成預設媒體庫設定。 */
 async function finishSettingsLibraries(ctx: Req, chatId: number, picked: PickedServerLibraries[]): Promise<Screen> {
   const serverIds = picked.map((item) => item.serverId).sort((a, b) => a - b);
-  const libraries = picked.flatMap((item) =>
-    item.libraries.map((library) => ({ name: library.name, externalId: library.externalId, serverId: item.serverId })),
-  );
+  const libraries = picked.flatMap((item) => item.libraries);
   await updateQuickSettings(ctx, { serverIds, libraries });
   return showQuickSettings(ctx, chatId, ctx.cat.msg.librariesSaved);
 }
@@ -1194,7 +1179,6 @@ async function sendInviteQr(
   chatId: number,
   invitation: { code: string; url: string },
 ): Promise<void> {
-  if (!invitation.code) return;
   if (!(await loadQuickSettings(ctx.sessions)).showQr) return;
   if (!/^https?:\/\//i.test(invitation.url)) return;
   try {
@@ -1507,20 +1491,6 @@ function commandOf(text: string): string | null {
 
 async function send(ctx: AppContext, chatId: number, text: string, markup?: ReplyMarkup): Promise<void> {
   await ctx.telegram.sendMessage(chatId, text, markup);
-}
-
-/** 同一則 Telegram 訊息只處理一次。儲存失敗時照常處理，避免資料庫閃斷把操作吃掉。 */
-async function claimMessage(sessions: AppContext["sessions"], chatId: number, messageId: number): Promise<boolean> {
-  if (!Number.isInteger(messageId) || messageId <= 0) return true;
-  const key = `seen:${chatId}:${messageId}`;
-  try {
-    if (await sessions.getText(key)) return false;
-    await sessions.setText(key, "1", 60 * 60);
-    return true;
-  } catch (error) {
-    console.error("[bot] 無法記錄訊息", error instanceof Error ? error.message : error);
-    return true;
-  }
 }
 
 /** 操作結果：API 有回訊息用訊息（escape 後），沒有則用在地化的完成提示。 */

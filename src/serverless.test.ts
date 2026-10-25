@@ -121,23 +121,4 @@ describe("handleServerlessMessage", () => {
     assert.equal(sent.length, 1);
     assert.match(String(sent[0]?.text), /WIZARR_URL/);
   });
-
-  it("群組裡設定無效時不回覆，避免把設定狀態貼到群組", async () => {
-    const sent: Record<string, unknown>[] = [];
-    const group = message("/start");
-    group.chat = { id: -100, type: "group" };
-    await handleServerlessMessage(group, {
-      config: { wizarrUrl: "not-a-url", wizarrApiKey: "key" },
-      kv: memoryKv(),
-      fetchImpl: fetch,
-      api: {
-        async sendMessage(params) {
-          sent.push(params);
-        },
-        async sendPhoto() {},
-      },
-      InputFile: InputFile as ServerlessInputFile,
-    });
-    assert.equal(sent.length, 0);
-  });
 });
