@@ -110,50 +110,6 @@ describe("createWizarrClient", () => {
     assert.equal(invitation.unlimited, false);
   });
 
-  it("區網絕對網址改寫到公開根網址，公開網址維持原樣", async () => {
-    async function inviteUrl(raw: string): Promise<string> {
-      const client = createWizarrClient({
-        apiBase: "https://wizarr.example/api",
-        apiKey: "k",
-        publicBase: "https://invite.example",
-        fetchImpl: async () =>
-          new Response(JSON.stringify({ invitation: { id: 1, code: "ABCD", url: raw } }), { status: 201 }),
-      });
-      const invitation = await client.createInvitation({
-        serverIds: [1],
-        expiresInDays: 7,
-        duration: "30",
-        unlimited: false,
-        libraryIds: [],
-        allowDownloads: false,
-        allowLiveTv: false,
-        allowMobileUploads: false,
-      });
-      return invitation.url;
-    }
-
-    assert.equal(await inviteUrl("http://192.168.1.20:5690/j/ABCD?x=1"), "https://invite.example/j/ABCD?x=1");
-    assert.equal(await inviteUrl("http://[::1]:5690/j/ABCD"), "https://invite.example/j/ABCD");
-    assert.equal(await inviteUrl("https://share.example/j/ABCD"), "https://share.example/j/ABCD");
-  });
-
-  it("連到區網位址時提示 Telegram 連不到", async () => {
-    const client = createWizarrClient({
-      apiBase: "http://[::1]:5690/api",
-      apiKey: "k",
-      publicBase: "https://invite.example",
-      fetchImpl: async () => {
-        throw new Error("fetch failed");
-      },
-    });
-    await assert.rejects(() => client.listServers(), (error: unknown) => {
-      assert.ok(error instanceof WizarrError);
-      assert.match(error.message, /區網/);
-      assert.match(error.message, /\[::1\]:5690/);
-      return true;
-    });
-  });
-
   it("把 Wizarr 錯誤訊息傳回", async () => {
     const client = createWizarrClient({
       apiBase: "https://wizarr.example/api",

@@ -53,10 +53,7 @@ export async function handleServerlessMessage(message: TelegramMessage, runtime:
   } catch (error) {
     const detail = error instanceof ConfigError ? error.message : "設定無效";
     console.error("[bot]", detail);
-    // 設定錯誤只回私訊。群組裡任何人都能看到，不要把缺少哪些變數講出來。
-    if (message.chat.type === "private") {
-      await runtime.api.sendMessage({ chat_id: message.chat.id, text: detail });
-    }
+    await runtime.api.sendMessage({ chat_id: message.chat.id, text: detail });
     return;
   }
 

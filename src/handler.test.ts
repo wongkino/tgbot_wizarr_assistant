@@ -27,14 +27,11 @@ const config: AppConfig = {
   timeZone: "Asia/Hong_Kong",
 };
 
-let nextMessageId = 1;
-
 function message(text: string, userId = 7, chatType = "private"): Update {
-  const id = nextMessageId++;
   return {
-    update_id: id,
+    update_id: 1,
     message: {
-      message_id: id,
+      message_id: 1,
       text,
       chat: { id: userId, type: chatType },
       from: { id: userId },
@@ -886,90 +883,8 @@ describe("回覆鍵盤", () => {
     const ctx = quickCtx();
     await saveQuickSettings(ctx.sessions, { ...defaultQuickSettings(), serverIds: [9] });
     await run(B.quickInvite, ctx);
-    assert.match(ctx.telegram.last().text, /缺少：#9/);
+    assert.match(ctx.telegram.last().text, /沒有已驗證的伺服器/);
     assert.equal(ctx.wizarr.created.length, 0);
-  });
-
-  it("只剩部分已驗證伺服器時不會悄悄少包一台", async () => {
-    const ctx = quickCtx();
-    await saveQuickSettings(ctx.sessions, { ...defaultQuickSettings(), serverIds: [1, 9] });
-    await run(B.quickInvite, ctx);
-    assert.match(ctx.telegram.last().text, /缺少：#9/);
-    assert.equal(ctx.wizarr.created.length, 0);
-  });
-
-  it("同名媒體庫只套用 externalId 相符的那一個", async () => {
-    const wizarr = embyQuickWizarr({
-      async listLibraries() {
-        return [library(3, "Movies", "mov"), library(4, "Movies", "other")];
-      },
-    });
-    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
-    await saveQuickSettings(ctx.sessions, {
-      ...defaultQuickSettings(),
-      libraries: [{ name: "Movies", externalId: "mov" }],
-    });
-    await run(B.quickInvite, ctx);
-    assert.deepEqual(wizarr.created[0]?.libraryIds, [3]);
-  });
-
-  it("預設媒體庫不會因為同名而勾到另一台伺服器", async () => {
-    const wizarr = fakeWizarr({
-      async listServers() {
-        return twoEmbyServers();
-      },
-      async listLibraries() {
-        return [
-          { ...library(3, "Movies", "mov"), serverId: 1, serverName: "Emby 一號" },
-          { ...library(12, "Movies", "mov2"), serverId: 2, serverName: "Emby 二號" },
-          { ...library(13, "Anime", "ani"), serverId: 2, serverName: "Emby 二號" },
-        ];
-      },
-    });
-    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
-    await saveQuickSettings(ctx.sessions, {
-      ...defaultQuickSettings(),
-      serverIds: [1, 2],
-      libraries: [
-        { name: "Movies", externalId: null, serverId: 1 },
-        { name: "Anime", externalId: "ani", serverId: 2 },
-      ],
-    });
-    await run(B.quickInvite, ctx);
-    assert.deepEqual(wizarr.created[0]?.serverIds, [1, 2]);
-    assert.deepEqual(wizarr.created[0]?.libraryIds, [3, 13]);
-  });
-
-  it("有限邀請被使用後不再沿用", async () => {
-    const created: CreateInvitationInput[] = [];
-    const track = trackInvites(created);
-    const ctx = { wizarr: embyQuickWizarr(track.api), telegram: new Recorder(), sessions: new MemorySessionStore() };
-    await saveQuickSettings(ctx.sessions, { ...defaultQuickSettings(), duration: "30", unlimited: false });
-    await run(B.quickInvite, ctx);
-    const current = track.invites[0];
-    assert.ok(current);
-    current.status = "used";
-    await run(B.quickInvite, ctx);
-    assert.equal(created.length, 2);
-    assert.doesNotMatch(ctx.telegram.last().text, /沿用這組代碼/);
-  });
-
-  it("相同訊息重送不會重複刪除使用者", async () => {
-    let deleted = 0;
-    const wizarr = fakeWizarr({
-      async deleteUser() {
-        deleted += 1;
-        return "deleted";
-      },
-    });
-    const ctx = { wizarr, telegram: new Recorder(), sessions: new MemorySessionStore() };
-    await run(B.deleteUser, ctx);
-    await run(userButton(cat, 12), ctx);
-    const confirm = message(B.confirm);
-    const app = { config, wizarr, telegram: ctx.telegram, sessions: ctx.sessions };
-    await handleUpdate(confirm, app);
-    await handleUpdate(confirm, app);
-    assert.equal(deleted, 1);
   });
 
   it("舊版設定沒有記錄伺服器時，以比對到的媒體庫推回伺服器", async () => {

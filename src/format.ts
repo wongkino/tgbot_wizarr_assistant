@@ -54,23 +54,10 @@ export function setDateTimeZone(zone: string): void {
   dateTimeZone = zone;
 }
 
-/**
- * 解析 Wizarr 的時間。沒有時區的日期時間視為 UTC（Wizarr 對 naive datetime 的假設）。
- * 已帶 Z 或 ±hh:mm 的值維持原樣；純日期依規格本來就是 UTC。
- */
-export function parseTimestamp(value: string): number {
-  const trimmed = value.trim();
-  if (!trimmed) return Number.NaN;
-  const hasZone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(trimmed);
-  const hasTime = /[t\s]\d{2}:\d{2}/i.test(trimmed);
-  if (hasZone || !hasTime) return Date.parse(trimmed);
-  return Date.parse(`${trimmed.replace(/\s+/, "T")}Z`);
-}
-
 export function formatDate(cat: Catalog, value: string | null | undefined): string {
   if (!value) return cat.neverExpires;
-  const time = parseTimestamp(value);
-  if (Number.isNaN(time)) return esc(value);
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return esc(value);
   return new Intl.DateTimeFormat(cat.dateLocale, {
     timeZone: dateTimeZone,
     year: "numeric",
@@ -79,7 +66,7 @@ export function formatDate(cat: Catalog, value: string | null | undefined): stri
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
-  }).format(new Date(time));
+  }).format(date);
 }
 
 function formatPaged<T>(

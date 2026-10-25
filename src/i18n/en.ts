@@ -232,8 +232,6 @@ export const catalog: Catalog = buildCatalog({
     pickVerified: "Please tap one of the verified servers.",
     quickMissingLibraries:
       "The servers are missing some default libraries, so no invite was created.\nMissing: {missing}.\nAdjust the default libraries in {settingsButton}.",
-    quickMissingServers:
-      "Some servers saved for quick invite are no longer verified, so no invite was created.\nMissing: {missing}.\nAdjust them in {settingsButton}.",
     quickReuseTitle: "An identical quick invite already exists; reusing its code.",
     inviteCreatedTitle: "Invite created.",
     settingsExpiryPrompt: "When should quick invite links expire?",

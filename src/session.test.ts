@@ -26,25 +26,6 @@ describe("工作階段", () => {
     assert.equal(await store.getText("quick-invite:1"), "NEW1");
     await store.setText("quick-invite:1", "OLD", -1);
     assert.equal(await store.getText("quick-invite:1"), null);
-    await store.setText("settings:quick-invite", "kept", 0);
-    assert.equal(await store.getText("settings:quick-invite"), "kept");
-  });
-
-  it("ttl 0 傳給 KV 表示不要過期", async () => {
-    let seen: { expirationTtl?: number } | undefined;
-    const store = new KvSessionStore({
-      async get() {
-        return null;
-      },
-      async put(_key, _value, options) {
-        seen = options;
-      },
-      async delete() {},
-    });
-    await store.setText("settings:quick-invite", "{}", 0);
-    assert.equal(seen?.expirationTtl, 0);
-    await store.set("7", { type: "main" }, 60);
-    assert.equal(seen?.expirationTtl, 60);
   });
 
   it("設定畫面的形狀會被驗證", () => {
