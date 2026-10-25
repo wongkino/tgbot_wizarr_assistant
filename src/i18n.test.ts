@@ -29,7 +29,18 @@ describe("多語言", () => {
       assert.deepEqual(Object.keys(buttons).sort(), reference, lang);
       for (const [key, label] of Object.entries(buttons)) {
         assert.ok(label.trim(), `${lang}.${key} 是空的`);
+        assert.ok(label.length <= 64, `${lang}.${key} 超過 Telegram 按鈕長度`);
       }
+      const labels = Object.values(buttons);
+      assert.equal(new Set(labels).size, labels.length, `${lang} 有重複按鈕`);
+      for (const label of Object.values(LANG_LABELS)) {
+        assert.equal(labels.includes(label), false, `${lang} 的按鈕與語言名稱衝突`);
+      }
+      for (const placeholder of Object.values(catalogFor(lang).ph)) {
+        assert.ok(placeholder.length <= 64, `${lang} 的輸入框提示超過 64 字`);
+      }
+      const flags = { allowDownloads: false, allowLiveTv: false, allowMobileUploads: false };
+      assert.ok(catalogFor(lang).permissionPlaceholder(flags).length <= 64, `${lang} 的權限提示超過 64 字`);
     }
   });
 

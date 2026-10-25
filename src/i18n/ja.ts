@@ -231,6 +231,8 @@ export const catalog: Catalog = buildCatalog({
     pickVerified: "認証済みサーバーのいずれかをタップしてください。",
     quickMissingLibraries:
       "サーバーに既定ライブラリがそろっていないため、クイック招待を作成できません。\n不足：{missing}。\n{settingsButton}で既定ライブラリを調整できます。",
+    quickMissingServers:
+      "クイック招待に保存したサーバーの一部が未認証のため、招待を作成できません。\n不足：{missing}。\n{settingsButton}で調整できます。",
     quickReuseTitle: "同じクイック招待があるため、そのコードを使い回します。",
     inviteCreatedTitle: "招待を作成しました。",
     settingsExpiryPrompt: "クイック招待のリンクはどのくらいで失効しますか？",

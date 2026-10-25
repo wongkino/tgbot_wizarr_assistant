@@ -1,7 +1,11 @@
 import type { QuickInviteSettings, QuickLibraryMatcher, SessionStore } from "./types.ts";
 
 const SETTINGS_KEY = "settings:quick-invite";
-const SETTINGS_TTL_SECONDS = 365 * 24 * 60 * 60;
+/**
+ * 0 表示不過期。這組設定會決定快速邀請涵蓋哪些伺服器與媒體庫；
+ * 若一年後被清掉，下次會悄悄退回「全部已驗證伺服器、全部媒體庫」。
+ */
+const SETTINGS_TTL_SECONDS = 0;
 const EXPIRY_DAYS = new Set([1, 7, 30]);
 
 export function defaultQuickSettings(): QuickInviteSettings {
@@ -87,7 +91,15 @@ function parseMatchers(value: unknown): QuickLibraryMatcher[] | null | undefined
     const record = item as Record<string, unknown>;
     if (typeof record.name !== "string" || !record.name) return undefined;
     if (record.externalId !== null && typeof record.externalId !== "string") return undefined;
-    matchers.push({ name: record.name, externalId: record.externalId });
+    const serverId = record.serverId;
+    if (serverId != null && (typeof serverId !== "number" || !Number.isInteger(serverId) || serverId <= 0)) {
+      return undefined;
+    }
+    matchers.push({
+      name: record.name,
+      externalId: record.externalId,
+      serverId: typeof serverId === "number" ? serverId : null,
+    });
   }
   return matchers;
 }
@@ -117,7 +129,8 @@ function sameServerIds(a: number[] | null, b: number[] | null): boolean {
 function sameMatchers(a: QuickLibraryMatcher[] | null, b: QuickLibraryMatcher[] | null): boolean {
   if (a === null || b === null) return a === b;
   if (a.length !== b.length) return false;
-  const keys = (list: QuickLibraryMatcher[]) => list.map((item) => `${item.name}\0${item.externalId ?? ""}`).sort();
+  const keys = (list: QuickLibraryMatcher[]) =>
+    list.map((item) => `${item.serverId ?? ""}\0${item.name}\0${item.externalId ?? ""}`).sort();
   const left = keys(a);
   const right = keys(b);
   return left.every((key, index) => key === right[index]);

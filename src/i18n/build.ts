@@ -161,6 +161,8 @@ export interface CatalogStrings {
     pickVerified: string;
     /** {missing} {settingsButton} */
     quickMissingLibraries: string;
+    /** {missing} {settingsButton}。missing 為已組好的 #id 列表。 */
+    quickMissingServers: string;
     quickReuseTitle: string;
     inviteCreatedTitle: string;
     settingsExpiryPrompt: string;
@@ -425,6 +427,8 @@ export function buildCatalog(s: CatalogStrings): Catalog {
       pickVerified: s.msg.pickVerified,
       quickMissingLibraries: (missing, settingsButton) =>
         tpl(s.msg.quickMissingLibraries, { missing: join(missing.map(esc)), settingsButton }),
+      quickMissingServers: (missing, settingsButton) =>
+        tpl(s.msg.quickMissingServers, { missing: join(missing.map((id) => `#${id}`)), settingsButton }),
       quickReuseTitle: s.msg.quickReuseTitle,
       inviteCreatedTitle: s.msg.inviteCreatedTitle,
       settingsExpiryPrompt: s.msg.settingsExpiryPrompt,

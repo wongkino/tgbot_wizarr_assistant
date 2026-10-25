@@ -8,7 +8,8 @@ export function createKv() {
     async get(key) {
       const row = await db.select().from(records).where(eq(records.key, key)).get();
       if (!row) return null;
-      if (row.expiresAt <= Date.now()) {
+      // expiresAt 為 0 表示永久保留（語言、快速邀請設定、永不過期的邀請代碼）。
+      if (row.expiresAt !== 0 && row.expiresAt <= Date.now()) {
         await db.delete(records).where(eq(records.key, key)).run();
         return null;
       }
@@ -16,7 +17,7 @@ export function createKv() {
     },
     async put(key, value, options) {
       const ttlSeconds = options?.expirationTtl ?? 60;
-      const expiresAt = Date.now() + ttlSeconds * 1000;
+      const expiresAt = ttlSeconds === 0 ? 0 : Date.now() + ttlSeconds * 1000;
       await db
         .insert(records)
         .values({ key, value, expiresAt })

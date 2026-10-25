@@ -222,6 +222,8 @@ export const catalog: Catalog = buildCatalog({
     pickVerified: "请点选其中一台已验证的服务器。",
     quickMissingLibraries:
       "服务器缺少部分默认媒体库，无法创建快速邀请。\n缺少：{missing}。\n可到{settingsButton}调整默认媒体库。",
+    quickMissingServers:
+      "设置里的部分服务器已不在已验证清单，无法创建快速邀请。\n缺少：{missing}。\n可到{settingsButton}调整。",
     quickReuseTitle: "已有相同的快速邀请，沿用这组代码。",
     inviteCreatedTitle: "邀请已创建。",
     settingsExpiryPrompt: "快速邀请的链接多久后失效？",
