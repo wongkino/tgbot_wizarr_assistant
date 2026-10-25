@@ -68,7 +68,7 @@ You can also run [Deploy Telegram Serverless](.github/workflows/deploy-serverles
 
 ## Local development
 
-Requires Node.js 22 or later.
+Requires Node.js 24 (Active LTS, currently 24.22.1; see `.nvmrc`).
 
 ```bash
 npm ci

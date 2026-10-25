@@ -68,7 +68,7 @@ npx tgcloud webhook sync
 
 ## 本机开发
 
-需要 Node.js 22 或以上。
+需要 Node.js 24（Active LTS，目前 24.22.1；见 `.nvmrc`）。
 
 ```bash
 npm ci
